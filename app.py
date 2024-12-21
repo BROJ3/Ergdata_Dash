@@ -6,9 +6,6 @@ from dash.dependencies import Input, Output
 from datetime import datetime
 import json
 
-
-
-
 connection = sqlite3.connect('team_data.db')
 
 # Create a cursor object
@@ -50,6 +47,8 @@ for row in rows:
     })
 
 data.sort(key=lambda x: (x['name'], x['date']))
+
+
 
 # Cumulative distance data
 cumulative_data = []
@@ -147,6 +146,7 @@ for rower in unique_rowers:
 
 
 app.layout = html.Div(
+
     className="dashboard-container",
     children=[
         html.H1("Clarkson Crew Performance Dashboard", className="dashboard-header"),
@@ -238,15 +238,8 @@ app.layout = html.Div(
             ]
         ),
 
-        dcc.Graph(id='workout-stroke-graph'),
-    html.Div([
-        dcc.Store(id='cumulative-data', data=json.load(open('cumulative_data.json'))),
-        dcc.Store(id='leaderboard-data', data=json.load(open('weekly_leaderboard.json'))),
-        dcc.Store(id='time-of-day-data', data=json.load(open('distance_by_time_of_day.json'))),
-        dcc.Store(id='weekday-data', data=json.load(open('distance_by_weekday.json')))
-
-    # Your existing layout components
-])
+        dcc.Graph(id='workout-stroke-graph')
+    
     ]
 )
 
@@ -320,9 +313,9 @@ app.clientside_callback(
 
 if __name__ == '__main__':
     app.run_server(debug=True)
-
+'''
     with open('index.html', 'w') as f:
-            f.write(app.get_asset('static'))
+            f.write(app.get_dist('static'))'''
 
 #if __name__ == '__main__':
 #    app.run_server(debug=True, host='0.0.0.0', port=8050) #for sharing - run this to be visible to everyone on the network
