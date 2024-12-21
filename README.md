@@ -1,6 +1,4 @@
 # Ergdata Dashboard
-## Introduction
-
 As coaches, we want to know how our rowers perform in daily workouts through this winter season. The largest bulk of a successful winter training regimen is done on a Concept2 Rowing Machine, which measures distance colleted, speed achieved, and strokes taken per minute. Performance on a Concept2 is gold standard in rowing power output comparison. 
 ![Crew](pictures/CrewOars.png)
 
