@@ -302,8 +302,5 @@ def update_workout_graph(selected_workout, selected_metric):
 if __name__ == '__main__':
     app.run_server(debug=True)
 
-    with open('index.html', 'w') as f:
-            f.write(app.get_asset('static'))
-
 #if __name__ == '__main__':
 #    app.run_server(debug=True, host='0.0.0.0', port=8050) #for sharing - run this to be visible to everyone on the network
