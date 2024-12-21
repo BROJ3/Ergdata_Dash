@@ -48,6 +48,8 @@ for row in rows:
 
 data.sort(key=lambda x: (x['name'], x['date']))
 
+
+
 # Cumulative distance data
 cumulative_data = []
 cumulative_tracker = {}
@@ -115,6 +117,23 @@ for week, totals in rower_weekly_totals.items():
     weekly_leaderboard[week]['distance'] = sum(totals.values())
     weekly_leaderboard[week]['most_rowed'] = max(totals, key=totals.get)
 
+with open('cumulative_data.json', 'w') as f:
+    json.dump(cumulative_data, f, default=str)  # Convert datetime to string
+
+# Save leaderboard data to a JSON file
+with open('weekly_leaderboard.json', 'w') as f:
+    json.dump(weekly_leaderboard, f)
+
+# Save distance by time of day to a JSON file
+with open('distance_by_time_of_day.json', 'w') as f:
+    json.dump(distance_by_time_of_day, f)
+
+# Save distance by weekday to a JSON file
+with open('distance_by_weekday.json', 'w') as f:
+    json.dump(distance_by_weekday, f)
+
+
+
 app = dash.Dash(__name__)
 
 unique_rowers = set()
@@ -127,6 +146,7 @@ for rower in unique_rowers:
 
 
 app.layout = html.Div(
+
     className="dashboard-container",
     children=[
         html.H1("Clarkson Crew Performance Dashboard", className="dashboard-header"),
@@ -219,6 +239,7 @@ app.layout = html.Div(
         ),
 
         dcc.Graph(id='workout-stroke-graph')
+    
     ]
 )
 
@@ -236,71 +257,65 @@ def update_workout_dropdown(selected_rower):
 
     return options
 
-@app.callback(
-    Output('workout-stroke-graph', 'figure'),
-    [Input('workout-dropdown', 'value'),
-     Input('metric-dropdown', 'value')]
-)
-def update_workout_graph(selected_workout, selected_metric):
-    if not selected_workout:
-        return px.line(title="No Data Available")
+app.clientside_callback(
+    """
+    function(selectedWorkout, selectedMetric) {
+        if (!selectedWorkout) {
+            return {
+                data: [],
+                layout: { title: 'No Data Available' }
+            };
+        }
 
-    stroke_data = json.loads(selected_workout)
-    strokes = stroke_data['data']
+        var strokeData = JSON.parse(selectedWorkout);  // Parse stroke data
+        var strokes = strokeData.data;
+        var strokeX = [...Array(strokes.length).keys()];  // Generate x-axis values
+        var strokeY = strokes.map(point => point[selectedMetric] || 0);  // Extract selected metric
 
-    metric_labels = {
-        'spm': 'Strokes per Minute',
-        'hr': 'Heart Rate',
-        'p': 'Pace'
+        // Handle metric-specific options
+        var tickvals = null;
+        var ticktext = null;
+        if (selectedMetric === 'p') {
+            tickvals = [];
+            ticktext = [];
+            [...new Set(strokeY)].forEach(val => {
+                var minutes = Math.floor(val / 600);
+                var seconds = Math.floor((val % 600) / 10);
+                tickvals.push(val);
+                ticktext.push(`${minutes}:${seconds.toString().padStart(2, '0')}`);
+            });
+        }
+
+        return {
+            data: [{
+                x: strokeX,
+                y: strokeY,
+                type: 'scatter',
+                mode: 'lines+markers',
+                name: selectedMetric
+            }],
+            layout: {
+                title: `${selectedMetric === 'spm' ? 'Strokes Per Minute' : selectedMetric === 'hr' ? 'Heart Rate' : 'Pace'} for Selected Workout`,
+                yaxis: {
+                    tickmode: tickvals ? 'array' : undefined,
+                    tickvals: tickvals,
+                    ticktext: ticktext,
+                    autorange: selectedMetric === 'p' ? 'reversed' : true
+                }
+            }
+        };
     }
-
-    stroke_x = list(range(len(strokes)))
-    stroke_y = []
-    for point in strokes:
-        value = point.get(selected_metric, 0)
-        stroke_y.append(value)
-
-    if selected_metric == 'p':
-        tickvals = []
-        ticktext = []
-
-        #recalculating pace into minutes:seconds format
-        for val in sorted(set(stroke_y)): 
-            minutes = val // 600
-            seconds = (val % 600) // 10
-            formatted_label = f"{int(minutes)}:{int(seconds):02d}"
-            tickvals.append(val)
-            ticktext.append(formatted_label)
-    else:
-        tickvals = None
-        ticktext = None
-
-    fig = px.line(
-        x=stroke_x,
-        y=stroke_y,
-        title=f"{metric_labels[selected_metric]} for Selected Workout",
-        labels={'x': 'Stroke Number', 'y': metric_labels[selected_metric]}
-    )
-
-    #Pace makes more sense if y-axis is flipped
-    if selected_metric == 'p':
-        fig.update_layout(
-            yaxis=dict(
-                tickmode="array",
-                tickvals=tickvals,
-                ticktext=ticktext,
-                autorange="reversed" 
-            )
-        )
-    return fig
-
+    """,
+    Output('workout-stroke-graph', 'figure'),
+    [Input('workout-dropdown', 'value'), Input('metric-dropdown', 'value')]
+)
 
 
 if __name__ == '__main__':
     app.run_server(debug=True)
-
+'''
     with open('index.html', 'w') as f:
-            f.write(app.get_asset('static'))
+            f.write(app.get_dist('static'))'''
 
 #if __name__ == '__main__':
 #    app.run_server(debug=True, host='0.0.0.0', port=8050) #for sharing - run this to be visible to everyone on the network
