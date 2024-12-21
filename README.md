@@ -1,7 +1,7 @@
 # Ergdata Dashboard
 
 The Dashboard can be viewed here https://ergdata-dash.onrender.com/ 
-Once started it takes 2 minutes to fully lad up, as it is hosted by render, which will put it to sleep if it hasn't been accessed for more than 15 minutes.
+Once started it takes 2 minutes to fully load up, as it is hosted by render, which will put it to sleep if it hasn't been accessed for more than 15 minutes.
 
 
 As coaches, we want to know how our rowers perform in daily workouts through this winter season. The largest bulk of a successful winter training regimen is done on a Concept2 Rowing Machine, which measures distance colleted, speed achieved, and strokes taken per minute. Performance on a Concept2 is gold standard in rowing power output comparison. 
