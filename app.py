@@ -5,7 +5,6 @@ from dash import dcc, html
 from dash.dependencies import Input, Output
 from datetime import datetime
 import json
-import config
 
 connection = sqlite3.connect('team_data.db')
 
@@ -299,7 +298,6 @@ def update_workout_graph(selected_workout, selected_metric):
 
 if __name__ == '__main__':
     app.run_server(debug=True)
-
 
     with open('index.html', 'w') as f:
             f.write(app.get_asset('static'))
