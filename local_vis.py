@@ -45,7 +45,7 @@ for row in rows:
         'time': int(time),
         'stroke_data': stroke_data
     })
-
+    
 data.sort(key=lambda x: (x['name'], x['date']))
 
 # Cumulative distance data
@@ -237,6 +237,8 @@ def update_workout_dropdown(selected_rower):
             value = json.dumps(entry['stroke_data'])
             options.append({'label': label, 'value': value})
 
+    options.sort(key=lambda x: (x['label']),reverse=True) # sort so dropdown shows most recent first
+
     return options
 
 @app.callback(
@@ -257,7 +259,7 @@ def update_workout_graph(selected_workout, selected_metric):
         'p': 'Pace'
     }
 
-    stroke_x = list(range(len(strokes)))
+    stroke_x = list(range(len(strokes))) #rewrite this to be by distance or time
     stroke_y = []
     for point in strokes:
         value = point.get(selected_metric, 0)
@@ -282,9 +284,8 @@ def update_workout_graph(selected_workout, selected_metric):
         x=stroke_x,
         y=stroke_y,
         title=f"{metric_labels[selected_metric]} for Selected Workout",
-        labels={'x': 'Stroke Number', 'y': metric_labels[selected_metric]}
+        labels={'x': 'Stroke Number - or something else?', 'y': metric_labels[selected_metric]}
     )
-
     #Pace makes more sense if y-axis is flipped
     if selected_metric == 'p':
         fig.update_layout(
