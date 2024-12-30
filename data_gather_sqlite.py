@@ -11,6 +11,7 @@ connection = sqlite3.connect('team_data.db')
 
 # Create a cursor object
 cursor = connection.cursor()
+
 #cursor.execute("DROP TABLE IF EXISTS crnjakt_workouts")
 #cursor.execute("DROP TABLE IF EXISTS crnjakt_rowers")
 
