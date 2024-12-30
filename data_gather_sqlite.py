@@ -12,8 +12,8 @@ connection = sqlite3.connect('team_data.db')
 # Create a cursor object
 cursor = connection.cursor()
 
-#cursor.execute("DROP TABLE IF EXISTS crnjakt_workouts")
-#cursor.execute("DROP TABLE IF EXISTS crnjakt_rowers")
+cursor.execute("DROP TABLE IF EXISTS crnjakt_workouts")
+cursor.execute("DROP TABLE IF EXISTS crnjakt_rowers")
 
 sql='''CREATE TABLE IF NOT EXISTS crnjakt_rowers (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -167,7 +167,7 @@ for rower in rowers.items():
             api_endpoint_range = f'https://log.concept2.com/api/users/{rower_id}/results?from={latest_date}&to='+datetime.today().strftime('%Y-%m-%d')
 
         else:
-            api_endpoint_range = f'https://log.concept2.com/api/users/{rower_id}/results?from=2024-11-01&to='+datetime.today().strftime('%Y-%m-%d')
+            api_endpoint_range = f'https://log.concept2.com/api/users/{rower_id}/results?from=2024-11-18&to='+datetime.today().strftime('%Y-%m-%d')
         
 
         data = fetch_data(api_endpoint_range, {'Authorization': f'Bearer {access_token}'})
