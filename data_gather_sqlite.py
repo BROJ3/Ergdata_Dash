@@ -12,8 +12,8 @@ connection = sqlite3.connect('team_data.db')
 # Create a cursor object
 cursor = connection.cursor()
 
-cursor.execute("DROP TABLE IF EXISTS crnjakt_workouts")
-cursor.execute("DROP TABLE IF EXISTS crnjakt_rowers")
+#cursor.execute("DROP TABLE IF EXISTS crnjakt_workouts")
+#cursor.execute("DROP TABLE IF EXISTS crnjakt_rowers")
 
 sql='''CREATE TABLE IF NOT EXISTS crnjakt_rowers (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -167,13 +167,13 @@ for rower in rowers.items():
             api_endpoint_range = f'https://log.concept2.com/api/users/{rower_id}/results?from={latest_date}&to='+datetime.today().strftime('%Y-%m-%d')
 
         else:
-            api_endpoint_range = f'https://log.concept2.com/api/users/{rower_id}/results?from=2024-11-18&to='+datetime.today().strftime('%Y-%m-%d')
+            api_endpoint_range = f'https://log.concept2.com/api/users/{rower_id}/results?from='+datetime.today().strftime('%Y-%m-%d')
         
 
         data = fetch_data(api_endpoint_range, {'Authorization': f'Bearer {access_token}'})
         
         if not data or 'data' not in data or not data['data']:
-            print(f"No workouts found for rower {name}")
+            print(f"No workouts found for rower {rower}")
             continue
 
         name=rower[1]['name']
@@ -198,7 +198,7 @@ for rower in rowers.items():
 
             if stroke_data_flag:
                 single_workout_endpoint = f'https://log.concept2.com/api/users/{rower_id}/results/{training_id}/strokes'
-                time.sleep(0.5)
+                time.sleep(1.5)
                 single_data = fetch_data(single_workout_endpoint, {'Authorization': f'Bearer {access_token}'})
                 if single_data:
                     stroke_data = json.dumps(single_data)

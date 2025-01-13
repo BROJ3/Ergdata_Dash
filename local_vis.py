@@ -5,6 +5,7 @@ from dash import dcc, html
 from dash.dependencies import Input, Output
 from datetime import datetime
 import json
+import pandas as pd
 
 connection = sqlite3.connect('team_data.db')
 
