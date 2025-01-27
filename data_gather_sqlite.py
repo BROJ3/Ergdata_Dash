@@ -160,14 +160,20 @@ for rower in rowers.items():
     
 
     print(rower[1]['name']+" has latest record on: ", latest_date)
+    #ADDING THIS SOON 
+     # Calculate the date 14 days before today
+    #two_weeks_ago = (datetime.today() - timedelta(days=14)).strftime('%Y-%m-%d')
+    #print(two_weeks_ago)
+    #api_endpoint_range = f'https://log.concept2.com/api/users/{rower_id}/results?from={two_weeks_ago}&to='+datetime.today().strftime('%Y-%m-%d')
+
 
     try:
 
         if latest_date:
-            api_endpoint_range = f'https://log.concept2.com/api/users/{rower_id}/results?from={latest_date}&to='+datetime.today().strftime('%Y-%m-%d')
+            api_endpoint_range = f'https://log.concept2.com/api/users/{rower_id}/results?from={latest_date}&to=2025-1-26' #+datetime.today().strftime('%Y-%m-%d')
 
         else:
-            api_endpoint_range = f'https://log.concept2.com/api/users/{rower_id}/results?from='+datetime.today().strftime('%Y-%m-%d')
+            api_endpoint_range = f'https://log.concept2.com/api/users/{rower_id}/results?from=2024-11-18&to=2024-11-30' #+datetime.today().strftime('%Y-%m-%d')
         
 
         data = fetch_data(api_endpoint_range, {'Authorization': f'Bearer {access_token}'})

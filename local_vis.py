@@ -285,7 +285,7 @@ def update_workout_graph(selected_workout, selected_metric):
         x=stroke_x,
         y=stroke_y,
         title=f"{metric_labels[selected_metric]} for Selected Workout",
-        labels={'x': 'Stroke Number - or something else?', 'y': metric_labels[selected_metric]}
+        labels={'x': 'Stroke Number:', 'y': metric_labels[selected_metric]}
     )
     #Pace makes more sense if y-axis is flipped
     if selected_metric == 'p':
@@ -298,7 +298,6 @@ def update_workout_graph(selected_workout, selected_metric):
             )
         )
     return fig
-
 
 
 if __name__ == '__main__':
