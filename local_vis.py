@@ -3,9 +3,10 @@ import plotly.express as px
 import dash
 from dash import dcc, html
 from dash.dependencies import Input, Output
-from datetime import datetime
+from datetime import datetime,timedelta
 import json
 import pandas as pd
+
 
 connection = sqlite3.connect('team_data.db')
 
@@ -21,6 +22,9 @@ cursor.execute(query)
 rows = cursor.fetchall()
 
 data = []
+
+two_weeks_ago = (datetime.today() - timedelta(days=14)) 
+
 
 #defining data
 for row in rows:
@@ -46,12 +50,16 @@ for row in rows:
         'time': int(time),
         'stroke_data': stroke_data
     })
+
+    
     
 data.sort(key=lambda x: (x['name'], x['date']))
 
 # Cumulative distance data
 cumulative_data = []
 cumulative_tracker = {}
+
+
 
 time_categories = {"Morning": (5, 11), "Midday": (11, 17), "Evening": (17, 23)}
 
@@ -65,23 +73,34 @@ distance_by_weekday = {}
 weekly_leaderboard = {}
 rower_weekly_totals = {}
 
+recent_workouts = [entry for entry in data if entry['date'] > two_weeks_ago]
+
+recent_cumulative_data = []
+recent_cumulative_tracker = {}
+
+
+
 for entry in data:
     name = entry['name']
     date = entry['date']
-    hour = entry['hour']
-    weekday = entry['weekday']
+    hour=entry['hour']
+    weekday=entry['weekday']
     distance = entry['distance']
 
+    # Update cumulative_tracker
     if name not in cumulative_tracker:
         cumulative_tracker[name] = 0.0
-
     cumulative_tracker[name] += distance
+    cumulative_data.append({'name': name, 'date': date, 'cumulative_distance': cumulative_tracker[name]})
 
-    cumulative_data.append({
-        'name': name,
-        'date': date,
-        'cumulative_distance': cumulative_tracker[name]
-    })
+    # Update recent_cumulative_tracker for last 14 days
+    if date > two_weeks_ago:
+        if name not in recent_cumulative_tracker:
+            recent_cumulative_tracker[name] = 0.0
+        recent_cumulative_tracker[name] += distance
+        recent_cumulative_data.append({'name': name, 'date': date, 'cumulative_distance': recent_cumulative_tracker[name]})
+
+
 
     #daytime segregation of workouts
     if 5 <= hour < 11:
@@ -107,7 +126,9 @@ for entry in data:
 
     rower_weekly_totals[week][name] += distance
 
-cumulative_data.sort(key=lambda x: (x['name'], x['date']))
+cumulative_data.sort(key=lambda x: (x['name'], x['date']))       
+
+
 
 for week, totals in rower_weekly_totals.items():
     if week not in weekly_leaderboard:
@@ -128,25 +149,28 @@ rower_options = []
 for rower in unique_rowers:
     rower_options.append({'label': rower, 'value': rower})
 
+#print(recent_cumulative_data)
+
 
 app.layout = html.Div(
 
     className="dashboard-container",
     children=[
         html.H1("Clarkson Crew Performance Dashboard", className="dashboard-header"),
-
+        # Cumulative distance for recent workouts (last 2 weeks)
         dcc.Graph(
-            id='cumulative-distance-graph',
+            id='recent-cumulative-distance-graph',
             figure=px.line(
-                cumulative_data,
+                recent_cumulative_data,
                 x='date',
                 y='cumulative_distance',
                 color='name',
-                title="Cumulative Distance by Rower",
+                title="Team distance in the past 14 days",
                 labels={'cumulative_distance': 'Cumulative Distance', 'date': 'Date', 'name': 'Rower'}
             ),
             className="graph"
         ),
+
 
         html.Div(
             className="charts-row",
@@ -173,13 +197,26 @@ app.layout = html.Div(
             ]
         ),
 
+        dcc.Graph(
+            id='cumulative-distance-graph',
+            figure=px.line(
+                cumulative_data,
+                x='date',
+                y='cumulative_distance',
+                color='name',
+                title="Total Team Cumulative Distance by Rower",
+                labels={'cumulative_distance': 'Cumulative Distance', 'date': 'Date', 'name': 'Rower'}
+            ),
+            className="graph"
+        ),
+
         html.H2("Leaderboard", className="leaderboard-header"),
         html.Div(
             className="leaderboard-container",
             children=[
                 html.Table(
                     children=[
-                        html.Tr([html.Th("Week"), html.Th("Total Distance"), html.Th("Most Rowed")])
+                        html.Tr([html.Th("Week"), html.Th("Team's meters rowed"), html.Th("Most Rowed")])
                     ] + [
                         html.Tr([html.Td(week), html.Td(data['distance']), html.Td(data['most_rowed'])])
                         for week, data in sorted(weekly_leaderboard.items())

@@ -170,7 +170,7 @@ for rower in rowers.items():
     try:
 
         if latest_date:
-            api_endpoint_range = f'https://log.concept2.com/api/users/{rower_id}/results?from={latest_date}&to=2025-1-26' #+datetime.today().strftime('%Y-%m-%d')
+            api_endpoint_range = f'https://log.concept2.com/api/users/{rower_id}/results?from={latest_date}&to='+datetime.today().strftime('%Y-%m-%d')
 
         else:
             api_endpoint_range = f'https://log.concept2.com/api/users/{rower_id}/results?from=2024-11-18&to=2024-11-30' #+datetime.today().strftime('%Y-%m-%d')

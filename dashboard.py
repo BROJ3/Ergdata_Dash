@@ -181,7 +181,7 @@ app.layout = html.Div(
             children=[
                 html.Table(
                     children=[
-                        html.Tr([html.Th("Week"), html.Th("Total Distance"), html.Th("Most Rowed")])
+                        html.Tr([html.Th("Week"), html.Th("Team's meters rowed"), html.Th("Most Rowed")])
                     ] + [
                         html.Tr([html.Td(week), html.Td(data['distance']), html.Td(data['most_rowed'])])
                         for week, data in sorted(weekly_leaderboard.items())
