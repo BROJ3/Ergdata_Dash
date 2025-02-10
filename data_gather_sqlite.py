@@ -160,11 +160,6 @@ for rower in rowers.items():
     
 
     print(rower[1]['name']+" has latest record on: ", latest_date)
-    #ADDING THIS SOON 
-     # Calculate the date 14 days before today
-    #two_weeks_ago = (datetime.today() - timedelta(days=14)).strftime('%Y-%m-%d')
-    #print(two_weeks_ago)
-    #api_endpoint_range = f'https://log.concept2.com/api/users/{rower_id}/results?from={two_weeks_ago}&to='+datetime.today().strftime('%Y-%m-%d')
 
 
     try:
