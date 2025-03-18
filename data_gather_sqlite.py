@@ -12,6 +12,7 @@ connection = sqlite3.connect('team_data.db')
 # Create a cursor object
 cursor = connection.cursor()
 
+#this is for reseting the database
 #cursor.execute("DROP TABLE IF EXISTS crnjakt_workouts")
 #cursor.execute("DROP TABLE IF EXISTS crnjakt_rowers")
 
@@ -133,15 +134,12 @@ if str(response.status_code) == '200' in response.text:
     rowers={}
 
     for row in table_body.find_all("tr"):
-
         name_cell = row.find("td")
-        profile_link = name_cell.find("a", href=True)
-        
+        profile_link = name_cell.find("a", href=True)    
         if profile_link and "profile" in profile_link["href"]:
 
             partner_id = profile_link["href"].split("/")[-1]
-            name = profile_link.get_text(strip=True)
-            
+            name = profile_link.get_text(strip=True)            
             rowers[name] = {
                 'name': name,
                 'partner_id': partner_id
@@ -157,8 +155,6 @@ for rower in rowers.items():
 
     rower_id = rower[1]['partner_id']
     latest_date = get_latest_workout_date(cursor,rower_id)
-    
-
     print(rower[1]['name']+" has latest record on: ", latest_date)
 
 
@@ -181,9 +177,7 @@ for rower in rowers.items():
         workouts=[]
 
         for workout_id in data['data']:
-    
             dates= workout_id['date'].split(' ')[0]    
-
             training_id = workout_id.get('id')
             distance = workout_id.get('distance', 0)
             stroke_data_flag = workout_id.get('stroke_data', False)  # True or False
@@ -204,17 +198,10 @@ for rower in rowers.items():
                 if single_data:
                     stroke_data = json.dumps(single_data)
 
-
             date_obj = datetime.strptime(workout_id['date'].split(' ')[0], "%Y-%m-%d")
-
-            # Get the day of the week
             day_of_week = date_obj.strftime("%A")                       
 
-
-
-            try:
-
-             
+            try:             
                 workouts.append((
                     rower_id,
                     training_id,
