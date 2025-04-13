@@ -97,3 +97,36 @@ h1 {
 #metric-dropdown {
     display:'inline-block';
 }
+
+
+/* Mobile styles (default) - already mostly handled */
+
+@media (max-width: 768px) {
+    .charts-row {
+        flex-direction: column;
+    }
+
+    .dropdown-row {
+        flex-direction: column;
+        padding: 20px;
+    }
+
+    .dropdown {
+        width: 100%;
+    }
+
+    .leaderboard-container table {
+        width: 100%;
+        font-size: 14px;
+    }
+
+    h1 {
+        font-size: 2rem;
+    }
+
+    .dashboard-container {
+        padding: 10px;
+        box-shadow: none;
+        border-radius: 0;
+    }
+}
