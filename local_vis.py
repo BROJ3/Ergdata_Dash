@@ -100,8 +100,6 @@ for entry in data:
         recent_cumulative_tracker[name] += distance
         recent_cumulative_data.append({'name': name, 'date': date, 'cumulative_distance': recent_cumulative_tracker[name]})
 
-
-
     #daytime segregation of workouts
     if 5 <= hour < 11:
          distance_by_time_of_day["Morning"] += distance
@@ -129,7 +127,7 @@ for entry in data:
 cumulative_data.sort(key=lambda x: (x['name'], x['date']))       
 
 
-
+weeks = 0
 for week, totals in rower_weekly_totals.items():
     if week not in weekly_leaderboard:
         weekly_leaderboard[week] = {'distance': 0, 'most_rowed': None}
