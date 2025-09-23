@@ -24,6 +24,8 @@ sql='''CREATE TABLE IF NOT EXISTS crnjakt_rowers (
 
 cursor.execute(sql)
 
+#adding a comment
+
 sql='''
 CREATE TABLE IF NOT EXISTS crnjakt_workouts (
     id INT AUTO_INCREMENT PRIMARY KEY,
