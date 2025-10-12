@@ -3,14 +3,12 @@ import plotly.express as px
 import dash
 from dash import dcc, html
 from dash.dependencies import Input, Output
-from datetime import datetime,timedelta
+from datetime import datetime
 import json
 import pandas as pd
 
-
 connection = sqlite3.connect('team_data.db')
 
-# Create a cursor object
 cursor = connection.cursor()
 
 query = """
@@ -23,10 +21,7 @@ rows = cursor.fetchall()
 
 data = []
 
-two_weeks_ago = (datetime.today() - timedelta(days=14)) 
-
-
-#defining data
+# defining data
 for row in rows:
     name = row[0]
     distance = row[1]
@@ -51,15 +46,11 @@ for row in rows:
         'stroke_data': stroke_data
     })
 
-    
-    
 data.sort(key=lambda x: (x['name'], x['date']))
 
 # Cumulative distance data
 cumulative_data = []
 cumulative_tracker = {}
-
-
 
 time_categories = {"Morning": (5, 11), "Midday": (11, 17), "Evening": (17, 23)}
 
@@ -73,42 +64,28 @@ distance_by_weekday = {}
 weekly_leaderboard = {}
 rower_weekly_totals = {}
 
-recent_workouts = [entry for entry in data if entry['date'] > two_weeks_ago]
-
-recent_cumulative_data = []
-recent_cumulative_tracker = {}
-
-
-
 for entry in data:
     name = entry['name']
     date = entry['date']
-    hour=entry['hour']
-    weekday=entry['weekday']
+    hour = entry['hour']
+    weekday = entry['weekday']
     distance = entry['distance']
 
-    # Update cumulative_tracker
+    # Update cumulative tracker
     if name not in cumulative_tracker:
         cumulative_tracker[name] = 0.0
     cumulative_tracker[name] += distance
     cumulative_data.append({'name': name, 'date': date, 'cumulative_distance': cumulative_tracker[name]})
 
-    # Update recent_cumulative_tracker for last 14 days
-    if date > two_weeks_ago:
-        if name not in recent_cumulative_tracker:
-            recent_cumulative_tracker[name] = 0.0
-        recent_cumulative_tracker[name] += distance
-        recent_cumulative_data.append({'name': name, 'date': date, 'cumulative_distance': recent_cumulative_tracker[name]})
-
-    #daytime segregation of workouts
+    # daytime segregation of workouts
     if 5 <= hour < 11:
-         distance_by_time_of_day["Morning"] += distance
+        distance_by_time_of_day["Morning"] += distance
     elif 11 <= hour < 17:
-         distance_by_time_of_day["Midday"] += distance
+        distance_by_time_of_day["Midday"] += distance
     elif 17 <= hour < 23:
-         distance_by_time_of_day["Evening"] += distance
+        distance_by_time_of_day["Evening"] += distance
 
-    #weekday segregation of workouts
+    # weekday segregation of workouts
     if weekday not in distance_by_weekday:
         distance_by_weekday[weekday] = 0
     distance_by_weekday[weekday] += distance
@@ -124,8 +101,7 @@ for entry in data:
 
     rower_weekly_totals[week][name] += distance
 
-cumulative_data.sort(key=lambda x: (x['name'], x['date']))       
-
+cumulative_data.sort(key=lambda x: (x['name'], x['date']))
 
 weeks = 0
 for week, totals in rower_weekly_totals.items():
@@ -138,37 +114,27 @@ for week, totals in rower_weekly_totals.items():
 app = dash.Dash(__name__)
 server = app.server
 
-
-unique_rowers = set()
-for entry in data:
-    unique_rowers.add(entry['name'])
-
-rower_options = []
-for rower in unique_rowers:
-    rower_options.append({'label': rower, 'value': rower})
-
-#print(recent_cumulative_data)
-
+rowers_with_strokes = sorted({entry['name'] for entry in data if entry['stroke_data']})
+rower_options = [{'label': r, 'value': r} for r in rowers_with_strokes]
 
 app.layout = html.Div(
-
     className="dashboard-container",
     children=[
         html.H1("Clarkson Crew Performance Dashboard", className="dashboard-header"),
-        # Cumulative distance for recent workouts (last 2 weeks)
+        html.H4("Data from Winter 24/25", className="dashboard-header"),
+
         dcc.Graph(
-            id='recent-cumulative-distance-graph',
+            id='cumulative-distance-graph',
             figure=px.line(
-                recent_cumulative_data,
+                cumulative_data,
                 x='date',
                 y='cumulative_distance',
                 color='name',
-                title="Team distance in the past 14 days",
+                title="Total Team Cumulative Distance by Rower",
                 labels={'cumulative_distance': 'Cumulative Distance', 'date': 'Date', 'name': 'Rower'}
             ),
             className="graph"
         ),
-
 
         html.Div(
             className="charts-row",
@@ -195,19 +161,6 @@ app.layout = html.Div(
             ]
         ),
 
-        dcc.Graph(
-            id='cumulative-distance-graph',
-            figure=px.line(
-                cumulative_data,
-                x='date',
-                y='cumulative_distance',
-                color='name',
-                title="Total Team Cumulative Distance by Rower",
-                labels={'cumulative_distance': 'Cumulative Distance', 'date': 'Date', 'name': 'Rower'}
-            ),
-            className="graph"
-        ),
-
         html.H2("Leaderboard", className="leaderboard-header"),
         html.Div(
             className="leaderboard-container",
@@ -229,7 +182,11 @@ app.layout = html.Div(
                     className="dropdown",
                     children=[
                         html.Label("Select Rower:"),
-                        dcc.Dropdown(id='rower-dropdown', options=rower_options, value=rower_options[0]['value']),
+                        dcc.Dropdown(
+                            id='rower-dropdown',
+                            options=rower_options,
+                            value=(rower_options[0]['value'] if rower_options else None)
+                        ),
                     ]
                 ),
                 html.Div(
@@ -273,8 +230,7 @@ def update_workout_dropdown(selected_rower):
             value = json.dumps(entry['stroke_data'])
             options.append({'label': label, 'value': value})
 
-    options.sort(key=lambda x: (x['label']),reverse=True) # sort so dropdown shows most recent first
-
+    options.sort(key=lambda x: (x['label']), reverse=True)  # most recent first
     return options
 
 @app.callback(
@@ -295,48 +251,45 @@ def update_workout_graph(selected_workout, selected_metric):
         'p': 'Pace'
     }
 
-    stroke_x = list(range(len(strokes))) #rewrite this to be by distance or time
-    stroke_y = []
-    for point in strokes:
-        value = point.get(selected_metric, 0)
-        stroke_y.append(value)
-
-    if selected_metric == 'p':
-        tickvals = []
-        ticktext = []
-
-        #recalculating pace into minutes:seconds format
-        for val in sorted(set(stroke_y)): 
-            minutes = val // 600
-            seconds = (val % 600) // 10
-            formatted_label = f"{int(minutes)}:{int(seconds):02d}"
-            tickvals.append(val)
-            ticktext.append(formatted_label)
-    else:
-        tickvals = None
-        ticktext = None
+    stroke_x = list(range(len(strokes)))
+    stroke_y = [point.get(selected_metric, 0) for point in strokes]
 
     fig = px.line(
-        x=stroke_x,
-        y=stroke_y,
-        title=f"{metric_labels[selected_metric]} for Selected Workout",
-        labels={'x': 'Stroke Number:', 'y': metric_labels[selected_metric]}
-    )
-    #Pace makes more sense if y-axis is flipped
+    x=stroke_x,
+    y=stroke_y,
+    title=f"{metric_labels[selected_metric]} for Selected Workout",
+    labels={'x': 'Stroke Number:', 'y': metric_labels[selected_metric]}
+)
+
     if selected_metric == 'p':
+        # Build per-point labels
+        pace_labels = [
+            f"{val // 600}:{((val % 600) // 10):02d}.{val % 10}"
+            for val in stroke_y
+        ]
+        fig.update_traces(
+            customdata=pace_labels,
+            hovertemplate="Stroke Number=%{x}<br>Pace=%{customdata}<extra></extra>"
+        )
+
+        # Standardized y-axis for pace
+        tickvals = list(range(540, 2341, 180))  # every 30s
+        ticktext = [f"{v//600}:{(v%600)//10:02d}" for v in tickvals]
         fig.update_layout(
             yaxis=dict(
                 tickmode="array",
                 tickvals=tickvals,
                 ticktext=ticktext,
-                autorange="reversed" 
+                autorange="reversed",
+                range=[2340, 540]
             )
         )
+
     return fig
 
 
 if __name__ == '__main__':
     app.run_server(debug=True)
 
-#if __name__ == '__main__':
-#    app.run_server(debug=True, host='0.0.0.0', port=8050) #for sharing - run this to be visible to everyone on the network
+# if __name__ == '__main__':
+#     app.run_server(debug=True, host='0.0.0.0', port=8050)
