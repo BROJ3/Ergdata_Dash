@@ -136,6 +136,7 @@ app.layout = html.Div(
     className="dashboard-container",
     children=[
         html.H1("Clarkson Crew Performance Dashboard", className="dashboard-header"),
+        html.H2("Data from Winter 24/25", className="dashboard-header"),
 
         dcc.Graph(
             id='cumulative-distance-graph',
