@@ -261,6 +261,7 @@ def update_workout_graph(selected_workout, selected_metric):
     labels={'x': 'Stroke Number:', 'y': metric_labels[selected_metric]}
 )
 
+    
     if selected_metric == 'p':
         # Build per-point labels
         pace_labels = [
@@ -269,7 +270,7 @@ def update_workout_graph(selected_workout, selected_metric):
         ]
         fig.update_traces(
             customdata=pace_labels,
-            hovertemplate="Stroke Number=%{x}<br>Pace=%{customdata}<extra></extra>"
+            hovertemplate="Pace=%{customdata}<extra></extra>"
         )
 
         # Standardized y-axis for pace
