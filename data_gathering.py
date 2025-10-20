@@ -6,6 +6,38 @@ import json
 from datetime import datetime
 import config
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import List, Tuple
+
+
+def fetch_and_build_for_rower(rower: dict, date_from: str, date_to: str) -> List[Tuple]:
+    """
+    Worker function: fetch all workouts for a rower and build tuples.
+    Returns a list of DB rows (tuples). No DB writes here.
+    We create a fresh HttpClient per worker to avoid sharing sessions across threads.
+    """
+    from .http_client import HttpClient  # local import to avoid circular deps
+    from .api import fetch_all_results_paginated, maybe_fetch_strokes, build_workout_tuple
+
+    http = HttpClient(config.access_token)
+    rows: List[Tuple] = []
+    try:
+        rid = rower["partner_id"]
+        items = fetch_all_results_paginated(http, rid, date_from, date_to)
+        if not items:
+            log.warning("No workouts found for %s", rower["name"])
+            return rows
+
+        for w in items:
+            training_id = w.get("id")
+            if not training_id or "distance" not in w:
+                continue
+            stroke_json = maybe_fetch_strokes(http, rid, training_id, w.get("stroke_data", False))
+            rows.append(build_workout_tuple(rid, rower["name"], w, stroke_json))
+        return rows
+    finally:
+        http.close()
+
 conn = pymysql.connect(
             host=config.host,
             port=config.port,

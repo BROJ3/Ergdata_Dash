@@ -5,6 +5,125 @@ import sqlite3
 import json
 from datetime import datetime
 import config
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import List, Tuple
+
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(message)s"
+)
+log = logging.getLogger("concept2")
+
+
+access_token = config.access_token  # keep this line where it is or move it above
+def make_session() -> requests.Session:
+    s = requests.Session()
+    s.headers.update({'Authorization': f'Bearer {access_token}'})
+    retry = Retry(
+        total=5,
+        backoff_factor=0.5,
+        status_forcelist=(429, 500, 502, 503, 504),
+        allowed_methods=("GET", "POST"),
+        respect_retry_after_header=True,
+    )
+    s.mount("https://", HTTPAdapter(max_retries=retry))
+    return s
+
+# global session for main thread use
+session = make_session()
+
+
+
+def login_and_get_rowers(session) -> dict:
+    login_url = "https://log.concept2.com/login"
+    partners_url = "https://log.concept2.com/team/" + config.my_team
+    resp = session.post(login_url, data=config.login_payload, allow_redirects=True)
+
+    if not resp.ok:
+        log.error("Login failed. status=%s", resp.status_code)
+        return {}
+
+    log.info("Login successful.")
+
+    resp = session.get(partners_url)
+    soup = BeautifulSoup(resp.text, "html.parser")
+    table = soup.find("table", class_="table js-tablesort")
+
+    if not table or not table.tbody:
+        log.error("Could not find team table on page.")
+        return {}
+    
+    #get all rowers from table
+    rowers = {}
+    for tr in table.tbody.find_all("tr"):
+        name_cell = tr.find("td")
+        if not name_cell:
+            continue
+        a = name_cell.find("a", href=True)
+        if not a or "profile" not in a["href"]:
+            continue
+        partner_id = a["href"].split("/")[-1]
+        name = a.get_text(strip=True)
+
+        # Key by partner_id to avoid collisions on same-name rowers
+        rowers[partner_id] = {"partner_id": partner_id, "name": name}
+    return rowers
+
+
+
+
+def build_date_range(latest_date: str | None) -> tuple[str, str]:
+    # Keep your current hardcoded windows, but centralized.
+    if latest_date:
+        return ("2024-11-01", "2025-03-01")
+    else:
+        return ("2024-11-01", "2025-03-01")
+    
+
+def maybe_fetch_strokes(session, rower_id: str, training_id: str, stroke_data_flag: bool) -> str | None:
+    if not stroke_data_flag:
+        return None
+    single_url = f"https://log.concept2.com/api/users/{rower_id}/results/{training_id}/strokes"
+    time.sleep(1.0)  # respect rate limits
+    single = fetch_data(single_url, sess=session)
+    return json.dumps(single) if single else None
+
+
+def build_workout_tuple(rower_id: str, name: str, w: dict, stroke_json: str | None) -> tuple:
+    date_str = w.get("date", "1970-01-01 00:00:00")
+    parts = date_str.split(" ")
+    date_only = parts[0] if len(parts) > 0 else "1970-01-01"
+    time_only = parts[1] if len(parts) > 1 else "00:00:00"
+
+    date_obj = datetime.strptime(date_only, "%Y-%m-%d")
+    day_of_week = date_obj.strftime("%A")
+
+    time_text = w.get("time", "00:00:00")
+    try:
+        h, m, s = map(int, time_text.split(":"))
+        time_seconds = h * 3600 + m * 60 + s
+    except Exception:
+        time_seconds = 0 
+    return (
+        rower_id,
+        w.get("id"),
+        name,
+        w.get("type"),
+        w.get("distance", 0),
+        date_only,
+        day_of_week,
+        time_only,
+        time_seconds,             
+        w.get("timezone", "UTC"),
+        w.get("date_utc"),
+        w.get("heart_rate", {}).get("average", 0),
+        w.get("calories_total", 0),
+        stroke_json,
+    )
 
 # Connect to SQLite database (or create it if it doesn't exist)
 connection = sqlite3.connect('team_data.db')
@@ -23,8 +142,6 @@ sql='''CREATE TABLE IF NOT EXISTS crnjakt_rowers (
 );'''
 
 cursor.execute(sql)
-
-#adding a comment
 
 sql='''
 CREATE TABLE IF NOT EXISTS crnjakt_workouts (
@@ -49,50 +166,46 @@ CREATE TABLE IF NOT EXISTS crnjakt_workouts (
 
 cursor.execute(sql)
 
+# --- Enable foreign key enforcement and create helpful indexes ---
+cursor.execute("PRAGMA foreign_keys = ON")
+cursor.execute("CREATE INDEX IF NOT EXISTS idx_workouts_rower_date ON crnjakt_workouts(rower_id, date)")
+cursor.execute("CREATE INDEX IF NOT EXISTS idx_workouts_workout_id ON crnjakt_workouts(workout_id)")
+cursor.execute("CREATE INDEX IF NOT EXISTS idx_rowers_partner_id ON crnjakt_rowers(partner_id)")
 
+BATCH_SIZE = 10
+
+#upsert a new rower not to have to catch error
 def insert_rower(conn, cursor, rower):
+
     sql = '''
     INSERT INTO crnjakt_rowers (partner_id, name)
     VALUES (?, ?)
+    ON CONFLICT(partner_id) DO UPDATE SET
+        name = excluded.name
     '''
-    try:
-        cursor.execute(sql, (
-            rower['partner_id'],
-            rower['name']
-        ))
-        conn.commit()
-
-    except Exception as e:
-        if e.__class__.__name__ == 'IntegrityError': #this happens in case of a duplicate, which will happen every time
-            pass
+    
+    with conn:
+        cursor.execute(sql, (rower['partner_id'], rower['name']))
 
 
 def insert_workout(conn, cursor, workouts):
-        
-        rower_ids= {workout[0] for workout in workouts}
-        for rower_id in rower_ids:
+  
+    if not workouts:
+        return 0
+    sql = '''
+    INSERT INTO crnjakt_workouts (
+        rower_id, workout_id, name, type, distance, date, weekday, hour,
+        time, timezone, date_utc, heart_rate, calories_total, stroke_data
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(workout_id) DO NOTHING
+    '''
+    # track how many were inserted
+    before = conn.total_changes
+    with conn:  # single transaction for this batch
+        cursor.executemany(sql, workouts)
+    return conn.total_changes - before
 
-            #checking if the rower exists in our "rowers" database
-            cursor.execute('SELECT partner_id FROM crnjakt_rowers WHERE partner_id = ?', (rower_id,))
-            result = cursor.fetchone()
-            if not result:
-                raise ValueError(f"Partner ID {rower_id} not found in crnjakt_rowers")
-        
-
-            sql = '''
-            INSERT INTO crnjakt_workouts (rower_id, workout_id,name, type, distance, date, weekday, hour, time, timezone, date_utc, heart_rate, calories_total,stroke_data)
-            VALUES (?, ?, ?, ?, ?, ?, ?,?, ?, ?, ?, ?, ?, ?)
-            ''' 
-            try:
-                cursor.executemany(sql, workouts)
-                conn.commit()
-
-                
-            except Exception as e:
-                if e.__class__.__name__ == "IntegrityError":
-                    pass
-                else:
-                    print(f"Error in insert_workout: {e.__class__.__name__} - {e}")
 
 
 
@@ -106,132 +219,163 @@ def get_latest_workout_date(cursor, partner_id):
 
 access_token = config.access_token 
 
-def fetch_data(api_endpoint, headers):
-    response = requests.get(api_endpoint, headers=headers)
-    if response.status_code == 200:
-        return response.json()
-    else:
-        print(f"Error: {response.status_code}, {response.text}")
-        return None
+def fetch_data(api_endpoint: str, sess: requests.Session | None = None):
+    """GET JSON with a hardened session (auth, retries, timeouts)."""
+    s = sess or session
+    try:
+        r = s.get(api_endpoint, timeout=(5, 30))  # (connect, read)
+        if r.status_code == 200:
+            return r.json()
+        log.error("HTTP %s on %s: %s", r.status_code, api_endpoint, r.text[:200])
+    except requests.RequestException:
+        log.exception("HTTP error on %s", api_endpoint)
+    return None
+
     
 
-#logging into Concept 2 website to scrape all team members data
-login_url = "https://log.concept2.com/login"       
-partners_url = "https://log.concept2.com/team/"+config.my_team  
+# Max allowed by Concept2 docs
+PER_PAGE = 250
+PAGE_SLEEP_SEC = 0.25  # be polite to the API
 
-session = requests.Session()
+def fetch_all_results_paginated(session, rower_id: str, date_from: str, date_to: str) -> list[dict]:
+    """
+    Fetch all results in [date_from, date_to] following Concept2 pagination.
+    Uses number=<PER_PAGE>&page=<n> and stops when current_page >= total_pages.
+    Falls back gracefully if meta.pagination is missing.
+    """
+    base = f"https://log.concept2.com/api/users/{rower_id}/results?from={date_from}&to={date_to}&number={PER_PAGE}"
+    items: list[dict] = []
+    page = 1
+    next_url = f"{base}&page={page}"
 
-login_payload = config.login_payload
+    while next_url:
+        data = fetch_data(next_url, sess=session)
+        if not data or "data" not in data:
+            break
 
-response = session.post(login_url, data=login_payload)
+        page_items = data["data"] or []
+        items.extend(page_items)
+        log.info("Fetched page %s (%s items, total so far %s)", page, len(page_items), len(items))
+
+        meta = (data.get("meta") or {}).get("pagination") or {}
+        current = meta.get("current_page", page)
+        total_pages = meta.get("total_pages")
+        links = meta.get("links") or {}
+        next_link = links.get("next")
+
+        if next_link:
+            next_url = next_link
+            page = current + 1
+        else:
+            if total_pages and current < total_pages:
+                page = current + 1
+                next_url = f"{base}&page={page}"
+            else:
+                next_url = None
+
+        if next_url:
+            time.sleep(PAGE_SLEEP_SEC)
+
+    return items
 
 
-if str(response.status_code) == '200' in response.text:
+    
 
-    print("Login successful.")
-    response = session.get(partners_url)
-    soup = BeautifulSoup(response.text, "html.parser")
-    table_body = soup.find("table", class_="table js-tablesort").find("tbody")
+def fetch_and_build_for_rower(rower: dict, date_from: str, date_to: str) -> List[Tuple]:
+    """
+    Worker: fetch all workouts for a rower and build DB tuples.
+    Returns a list of tuples. No DB writes here.
+    Creates its own hardened session (do not share sessions across threads).
+    """
+    rows: List[Tuple] = []
+    worker_session = make_session()
+    try:
+        rid = rower["partner_id"]
+        items = fetch_all_results_paginated(worker_session, rid, date_from, date_to)
+        if not items:
+            log.warning("No workouts found for %s", rower["name"])
+            return rows
 
-    rowers={}
+        for w in items:
+            tid = w.get("id")
+            if not tid or "distance" not in w:
+                continue
+            stroke_json = maybe_fetch_strokes(worker_session, rid, tid, w.get("stroke_data", False))
+            rows.append(build_workout_tuple(rid, rower["name"], w, stroke_json))
+        return rows
+    except Exception:
+        log.exception("Worker failed for %s", rower.get("name"))
+        return rows
+    finally:
+        try:
+            worker_session.close()
+        except Exception:
+            log.exception("Error closing worker session")
 
-    for row in table_body.find_all("tr"):
-        name_cell = row.find("td")
-        profile_link = name_cell.find("a", href=True)    
-        if profile_link and "profile" in profile_link["href"]:
 
-            partner_id = profile_link["href"].split("/")[-1]
-            name = profile_link.get_text(strip=True)            
-            rowers[name] = {
-                'name': name,
-                'partner_id': partner_id
-            }
-else:
-    print("Login failed.")
-    print(response.status_code)
+start_time = time.time()
+try:
+    # 1) Login + get rowers
+    rowers = login_and_get_rowers(session)  # dict keyed by partner_id
+    if not rowers:
+        raise SystemExit("No rowers found; aborting.")
 
-start_time=time.time()
+    # 2) Upsert rowers first (cheap) so FK inserts are valid
+    for _, rower in rowers.items():
+        insert_rower(connection, cursor, rower)
 
-for rower in rowers.items():
-    insert_rower(connection, cursor, rower[1])
+    date_from, date_to = build_date_range(None)  # or hardcode your window
 
-    rower_id = rower[1]['partner_id']
-    latest_date = get_latest_workout_date(cursor,rower_id)
-    print(rower[1]['name']+" has latest record on: ", latest_date)
+    # 3) Fetch/process concurrently (network), write sequentially (DB)
+    MAX_WORKERS = 8 # tune 4–8 based on rate limits / network
 
+    futures = {}
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as ex:
+        for _, rower in rowers.items():
+            # Optional: log latest known date
+            latest_date = get_latest_workout_date(cursor, rower["partner_id"])
+            log.info("%s has latest record on: %s", rower["name"], latest_date)
+
+            futures[ex.submit(fetch_and_build_for_rower, rower, date_from, date_to)] = rower
+
+        for fut in as_completed(futures):
+            rower = futures[fut]
+            name = rower["name"]
+            try:
+                rows = fut.result()  # List[Tuple] for this rower
+            except Exception:
+                log.exception("Worker future failed for %s", name)
+                continue
+
+            if not rows:
+                continue
+
+            # DB writes happen here in the main thread (safe for SQLite)
+            batch = []
+            for t in rows:
+                batch.append(t)
+                if len(batch) >= BATCH_SIZE:
+                    inserted = insert_workout(connection, cursor, batch)
+                    log.info("✅ Batch %s (new: %s) for %s", len(batch), inserted, name)
+                    batch.clear()
+
+            if batch:
+                inserted = insert_workout(connection, cursor, batch)
+                log.info("✅ Remaining %s (new: %s) for %s", len(batch), inserted, name)
+
+    elapsed = time.time() - start_time
+    log.info("Script ran successfully! Elapsed time: %.2fs", elapsed)
+
+finally:
 
     try:
+        connection.close()
+        log.info("SQLite connection closed.")
+    except Exception:
+        log.exception("Error while closing SQLite connection")
 
-        if latest_date:
-            api_endpoint_range = f'https://log.concept2.com/api/users/{rower_id}/results?from=2025-02-01&to=2025-03-01'   #{latest_date}&to=2025-03-01' #+datetime.today().strftime('%Y-%m-%d')
-
-        else:
-            api_endpoint_range = f'https://log.concept2.com/api/users/{rower_id}/results?from=2024-11-01&to=2024-12-01'     #2025-03-01' #+datetime.today().strftime('%Y-%m-%d')
-        
-        data = fetch_data(api_endpoint_range, {'Authorization': f'Bearer {access_token}'})
-        
-        if not data or 'data' not in data or not data['data']:
-            print(f"No workouts found for rower {rower}")
-            continue
-
-        name=rower[1]['name']
-        workouts=[]
-
-        for workout_id in data['data']:
-            dates= workout_id['date'].split(' ')[0]    
-            training_id = workout_id.get('id')
-            distance = workout_id.get('distance', 0)
-            stroke_data_flag = workout_id.get('stroke_data', False)  # True or False
-
-
-            if not training_id:
-                raise KeyError("Missing 'id' in workout data")
-            if 'distance' not in workout_id:
-                raise KeyError("Missing 'distance' in workout data")
-            
-
-            stroke_data=None
-
-            if stroke_data_flag:
-                single_workout_endpoint = f'https://log.concept2.com/api/users/{rower_id}/results/{training_id}/strokes'
-                time.sleep(1.5)
-                single_data = fetch_data(single_workout_endpoint, {'Authorization': f'Bearer {access_token}'})
-                if single_data:
-                    stroke_data = json.dumps(single_data)
-
-            date_obj = datetime.strptime(workout_id['date'].split(' ')[0], "%Y-%m-%d")
-            day_of_week = date_obj.strftime("%A")                       
-
-            try:             
-                workouts.append((
-                    rower_id,
-                    training_id,
-                    name,
-                    workout_id['type'],
-                    distance,
-                    workout_id.get('date', '1970-01-01').split(' ')[0],
-                    day_of_week,
-                    workout_id.get('date', '1970-01-01').split(' ')[1],
-                    workout_id.get('time', '00:00:00'),
-                    workout_id.get('timezone', 'UTC'),
-                    workout_id.get('date_utc'),
-                    workout_id.get('heart_rate', {}).get('average', 0),
-                    workout_id.get('calories_total', 0),
-                    stroke_data
-                ))
-
-                if len(workouts) ==1:
-                    insert_workout(connection, cursor, workouts)
-                    workouts=[]
-
-            except Exception as e:
-                print   (f"Error processing workout {workout_id}: {e}")
-
-        insert_workout(connection, cursor, workouts)
-
-    except Exception as e:
-        print(f"Error processing rower {rower[1]['name']}: {e}")
-
-end_time=time.time()-start_time
-
-print("Script ran successfully! Elapsed time: ", end_time)
+    try:
+        session.close()
+        log.info("HTTP session closed.")
+    except Exception:
+        log.exception("Error while closing HTTP session")
