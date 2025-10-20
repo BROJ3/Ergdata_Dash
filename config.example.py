@@ -10,7 +10,6 @@ db='database name'
 
 access_token = 'access token for concept2 logbook API' 
 
-
 login_payload = {
     "username": "Your Concetp2 Logbook Username",  
     "password": "Your Concetp2 Logbook Password"

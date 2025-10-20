@@ -166,7 +166,7 @@ for rower in rowers.items():
             api_endpoint_range = f'https://log.concept2.com/api/users/{rower_id}/results?from={latest_date}&to=2025-03-01' #+datetime.today().strftime('%Y-%m-%d')
 
         else:
-            api_endpoint_range = f'https://log.concept2.com/api/users/{rower_id}/results?from=2024-11-01&to=2025-03-01' #+datetime.today().strftime('%Y-%m-%d')
+            api_endpoint_range = f'https://log.concept2.com/api/users/{rower_id}/results?from=2024-11-01&to=2024-12-31'     #2025-03-01' #+datetime.today().strftime('%Y-%m-%d')
         
         data = fetch_data(api_endpoint_range, {'Authorization': f'Bearer {access_token}'})
         
