@@ -39,14 +39,6 @@ df=df.sort_values(["name","date"])
 
 
 
-cursor = connection.cursor()
-
-
-rows = cursor.fetchall()
-
-data = []
-
-
 
 df["cumulative_distance"] = df.groupby("name")["distance"].cumsum()
 cumulative_df = df[["name", "date", "cumulative_distance"]]
@@ -98,45 +90,6 @@ weekly_leaderboard = weekly_totals.merge(weekly_winner, on="week_num")
 
 
 
-
-
-
-for entry in data:
-    name = entry['name']
-    date = entry['date']
-    hour = entry['hour']
-    weekday = entry['weekday']
-    distance = entry['distance']
-
-    distance_by_weekday = (
-        df.groupby("weekday", as_index=False, observed=False)["distance"]
-        .sum()
-        .sort_values("weekday")
-    )
-
-    # daytime segregation of workouts
-    if 5 <= hour < 11:
-        distance_by_time_of_day["Morning"] += distance
-    elif 11 <= hour < 17:
-        distance_by_time_of_day["Midday"] += distance
-    elif 17 <= hour < 23:
-        distance_by_time_of_day["Evening"] += distance
-
-    # weekday segregation of workouts
-    if weekday not in distance_by_weekday:
-        distance_by_weekday[weekday] = 0
-    distance_by_weekday[weekday] += distance
-
-    start_date = datetime(2024, 11, 1)
-    week = ((date - start_date).days // 7) + 1
-
-    if week not in rower_weekly_totals:
-        rower_weekly_totals[week] = {}
-
-    if name not in rower_weekly_totals[week]:
-        rower_weekly_totals[week][name] = 0
-
-    rower_weekly_totals[week][name] += distance
 
 
 app = dash.Dash(__name__)
