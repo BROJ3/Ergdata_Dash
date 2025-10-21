@@ -6,16 +6,41 @@ from dash.dependencies import Input, Output
 from datetime import datetime
 import json
 import pandas as pd
+import numpy as np
 
+
+#loading into dataframe
 connection = sqlite3.connect('team_data.db')
+
+df = pd.read_sql_query(
+    """
+    SELECT name, distance, date, weekday, hour, time, stroke_data
+    FROM crnjakt_workouts
+    """, 
+    connection,
+    parse_dates=["date"]
+)
+
+df["distance"] = df["distance"].astype(float)
+df["hour"]=df.to_datetime(df["hour"], format = "%H:%M:%S").dt.hour
+df["time"] = df["time"].astype(int)
+
+
+#parse the json if workour has stroke data
+def parse_json_maybe(js):
+    try:
+        return json.loads(js) if js else None
+    except Exception:
+        return None
+
+df["stroke_data"] = df["stroke_data"].apple(parse_json_maybe)
+
+df=df.sort_values(["name","date"])
+
+
 
 cursor = connection.cursor()
 
-query = """
-    SELECT name, distance, date, weekday, hour, time, stroke_data
-    FROM crnjakt_workouts
-"""
-cursor.execute(query)
 
 rows = cursor.fetchall()
 
@@ -48,21 +73,51 @@ for row in rows:
 
 data.sort(key=lambda x: (x['name'], x['date']))
 
-# Cumulative distance data
-cumulative_data = []
-cumulative_tracker = {}
 
-time_categories = {"Morning": (5, 11), "Midday": (11, 17), "Evening": (17, 23)}
+df["cumulative_distance"] = df.groupby("name")["distance"].cumsum()
+cumulative_df = df[["name", "date", "cumulative_distance"]]
 
-distance_by_time_of_day = {
-    "Morning": 0.0,
-    "Midday": 0.0,
-    "Evening": 0.0,
-}
 
-distance_by_weekday = {}
-weekly_leaderboard = {}
-rower_weekly_totals = {}
+def tod(h):
+    if 5<= h < 11:
+        return "Morning"
+    if 11<= h < 17:
+        return "Midday"
+    if 17<= h < 23:
+        return "Evening"
+    return "Night"
+
+df["time_of_day"] = df["hour"].apply(tod)
+
+distance_by_tod = (
+    df[df["time_of_day"].isin(["Morning","Midday","Evening"])]
+    .groupby("time_of_day", as_index=False)["distance"].sum()
+    .sort_values("time_of_dat")
+)
+
+
+weekday_order = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
+df["weekday"] = pd.Categorical(df["weekday"], categories = weekday_order, ordered = True)
+
+distance_by_weekday = (
+    df.groupby("weekday", as_index=False)["distance"].sum().sort_values("weekday")
+)
+
+
+START=pd.Timestamp("2024-11-01")
+df["week_num"]=((df["date"] - START).dt.days // 7 )+1
+
+
+weekly_totals = df.groupby("week_num", as_index=False)["distance"].sum()
+
+idx = df.groupby("week_num")["distance"].idxmax()
+weekly_winner = df.loc[idx, ["week_num","name"].rename(columns = {"name":"most_rowed"})]
+
+weekly_leaderboard = weekly_totals.merge(weekly_winner, on = "week_num")
+
+
+
+
 
 for entry in data:
     name = entry['name']
@@ -71,11 +126,6 @@ for entry in data:
     weekday = entry['weekday']
     distance = entry['distance']
 
-    # Update cumulative tracker
-    if name not in cumulative_tracker:
-        cumulative_tracker[name] = 0.0
-    cumulative_tracker[name] += distance
-    cumulative_data.append({'name': name, 'date': date, 'cumulative_distance': cumulative_tracker[name]})
 
     # daytime segregation of workouts
     if 5 <= hour < 11:
@@ -101,7 +151,7 @@ for entry in data:
 
     rower_weekly_totals[week][name] += distance
 
-cumulative_data.sort(key=lambda x: (x['name'], x['date']))
+
 
 weeks = 0
 for week, totals in rower_weekly_totals.items():
@@ -126,7 +176,7 @@ app.layout = html.Div(
         dcc.Graph(
             id='cumulative-distance-graph',
             figure=px.line(
-                cumulative_data,
+                cumulative_df,
                 x='date',
                 y='cumulative_distance',
                 color='name',
@@ -142,8 +192,9 @@ app.layout = html.Div(
                 dcc.Graph(
                     id='time-of-day-pie-chart',
                     figure=px.pie(
-                        names=list(distance_by_time_of_day.keys()),
-                        values=list(distance_by_time_of_day.values()),
+                        distance_by_tod,
+                        names="time_of_day",
+                        values="distance",
                         title="Distance by Time of Day"
                     ),
                     className="chart"
@@ -151,10 +202,11 @@ app.layout = html.Div(
                 dcc.Graph(
                     id='weekday-bar-chart',
                     figure=px.bar(
-                        x=list(distance_by_weekday.keys()),
-                        y=list(distance_by_weekday.values()),
+                        distance_by_weekday,
+                        x="weekday",
+                        y="distance",
                         title="Distance by Weekday",
-                        labels={'x': 'Weekday', 'y': 'Distance'}
+                        labels={'weekday': 'Weekday', 'distance': 'Distance'}
                     ),
                     className="chart"
                 )
@@ -169,7 +221,7 @@ app.layout = html.Div(
                     children=[
                         html.Tr([html.Th("Week"), html.Th("Team's meters rowed"), html.Th("Most Rowed")])
                     ] + [
-                        html.Tr([html.Td(week), html.Td(data['distance']), html.Td(data['most_rowed'])])
+                        html.Tr([html.Td(row.week_num)), html.Td(int(row.distance)), html.Td(row.most_rowed)])
                         for week, data in sorted(weekly_leaderboard.items())
                     ]
                 )
