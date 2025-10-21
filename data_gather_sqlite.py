@@ -10,8 +10,28 @@ from urllib3.util.retry import Retry
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Tuple
+import random
+from threading import Semaphore
 
 
+# overall configuration
+
+BATCH_SIZE = 20
+
+# API paging
+PER_PAGE = 250
+PAGE_SLEEP_SEC = 0.25  # polite delay between result pages
+
+STROKE_CONCURRENCY = 3
+STROKE_SEM = Semaphore(3)
+
+JITTER_MIN, JITTER_MAX = 0.05,0.20
+
+DEFAULT_FROM = "2024-11-01"
+DEFAULT_TO   = "2025-03-01"
+
+
+#set up logs
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(message)s"
@@ -19,7 +39,9 @@ logging.basicConfig(
 log = logging.getLogger("concept2")
 
 
-access_token = config.access_token  # keep this line where it is or move it above
+access_token = config.access_token  
+
+#Create a requests.Session with auth, retries, and backoff
 def make_session() -> requests.Session:
     s = requests.Session()
     s.headers.update({'Authorization': f'Bearer {access_token}'})
@@ -37,8 +59,9 @@ def make_session() -> requests.Session:
 session = make_session()
 
 
-
+#  Login to Concept2 and scrape the team roster table
 def login_and_get_rowers(session) -> dict:
+
     login_url = "https://log.concept2.com/login"
     partners_url = "https://log.concept2.com/team/" + config.my_team
     resp = session.post(login_url, data=config.login_payload, allow_redirects=True)
@@ -75,22 +98,22 @@ def login_and_get_rowers(session) -> dict:
 
 
 
-
 def build_date_range(latest_date: str | None) -> tuple[str, str]:
     # Keep your current hardcoded windows, but centralized.
-    if latest_date:
-        return ("2024-11-01", "2025-03-01")
-    else:
-        return ("2024-11-01", "2025-03-01")
-    
+    return (DEFAULT_FROM, DEFAULT_TO)
 
 def maybe_fetch_strokes(session, rower_id: str, training_id: str, stroke_data_flag: bool) -> str | None:
     if not stroke_data_flag:
         return None
     single_url = f"https://log.concept2.com/api/users/{rower_id}/results/{training_id}/strokes"
-    time.sleep(1.0)  # respect rate limits
-    single = fetch_data(single_url, sess=session)
-    return json.dumps(single) if single else None
+
+    with STROKE_SEM:
+        time.sleep(0.2+random.uniform(JITTER_MIN, JITTER_MAX))  # respect rate limits
+    
+    
+        single = fetch_data(single_url, sess=session)
+        return json.dumps(single) if single else None
+
 
 
 def build_workout_tuple(rower_id: str, name: str, w: dict, stroke_json: str | None) -> tuple:
@@ -125,56 +148,46 @@ def build_workout_tuple(rower_id: str, name: str, w: dict, stroke_json: str | No
         stroke_json,
     )
 
-# Connect to SQLite database (or create it if it doesn't exist)
-connection = sqlite3.connect('team_data.db')
+# Connect to SQLite database
+def setup_db(conn: sqlite3.Connection) -> sqlite3.Cursor:
+    cur = conn.cursor()
+    cur.execute('PRAGMA foreign_keys = ON')
 
-# Create a cursor object
-cursor = connection.cursor()
+    cur.execute('''
+    CREATE TABLE IF NOT EXISTS crnjakt_rowers (
+        id         INT AUTO_INCREMENT PRIMARY KEY,
+        partner_id VARCHAR(255) UNIQUE NOT NULL,
+        name       VARCHAR(255) NOT NULL
+    );
+    ''')
 
-#this is for reseting the database
-#cursor.execute("DROP TABLE IF EXISTS crnjakt_workouts")
-#cursor.execute("DROP TABLE IF EXISTS crnjakt_rowers")
+    cur.execute('''
+    CREATE TABLE IF NOT EXISTS crnjakt_workouts (
+        id             INT AUTO_INCREMENT PRIMARY KEY,
+        rower_id       VARCHAR(255) NOT NULL,
+        workout_id     VARCHAR(255) UNIQUE NOT NULL,
+        name           VARCHAR(200),
+        type           VARCHAR(30),
+        distance       INT,
+        date           DATE,
+        weekday        VARCHAR(30),
+        hour           TIME,
+        time           INT,
+        timezone       VARCHAR(255),
+        date_utc       DATETIME,
+        heart_rate     INT,
+        calories_total INT,
+        stroke_data    JSON,
+        FOREIGN KEY (rower_id) REFERENCES crnjakt_rowers(partner_id)
+    );
+    ''')
 
-sql='''CREATE TABLE IF NOT EXISTS crnjakt_rowers (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    partner_id VARCHAR(255) UNIQUE NOT NULL,
-    name VARCHAR(255) NOT NULL
-);'''
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_workouts_rower_date ON crnjakt_workouts(rower_id, date)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_workouts_workout_id ON crnjakt_workouts(workout_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_rowers_partner_id ON crnjakt_rowers(partner_id)")
+    return cur
 
-cursor.execute(sql)
-
-sql='''
-CREATE TABLE IF NOT EXISTS crnjakt_workouts (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    rower_id VARCHAR(255) NOT NULL,
-    workout_id VARCHAR(255) UNIQUE NOT NULL,
-    name VARCHAR(200),
-    type VARCHAR(30),
-    distance INT,
-    date DATE,
-    weekday VARCHAR(30),
-    hour TIME,
-    time INT,
-    timezone VARCHAR(255),
-    date_utc DATETIME,
-    heart_rate INT,
-    calories_total INT,
-    stroke_data JSON,
-    FOREIGN KEY (rower_id) REFERENCES crnjakt_rowers(partner_id)
-);
-'''
-
-cursor.execute(sql)
-
-# --- Enable foreign key enforcement and create helpful indexes ---
-cursor.execute("PRAGMA foreign_keys = ON")
-cursor.execute("CREATE INDEX IF NOT EXISTS idx_workouts_rower_date ON crnjakt_workouts(rower_id, date)")
-cursor.execute("CREATE INDEX IF NOT EXISTS idx_workouts_workout_id ON crnjakt_workouts(workout_id)")
-cursor.execute("CREATE INDEX IF NOT EXISTS idx_rowers_partner_id ON crnjakt_rowers(partner_id)")
-
-BATCH_SIZE = 10
-
-#upsert a new rower not to have to catch error
+#use upsert
 def insert_rower(conn, cursor, rower):
 
     sql = '''
@@ -202,14 +215,11 @@ def insert_workout(conn, cursor, workouts):
     '''
     # track how many were inserted
     before = conn.total_changes
-    with conn:  # single transaction for this batch
+    with conn:  
         cursor.executemany(sql, workouts)
     return conn.total_changes - before
 
 
-
-
-#keeping track of most recent workouts, so that we scrape less data
 def get_latest_workout_date(cursor, partner_id):
     sql = "SELECT MAX(date) as latest_date FROM crnjakt_workouts WHERE rower_id = ?"
     cursor.execute(sql, (partner_id,))
@@ -231,20 +241,13 @@ def fetch_data(api_endpoint: str, sess: requests.Session | None = None):
         log.exception("HTTP error on %s", api_endpoint)
     return None
 
+#fetch all workouts
+def fetch_all_results_paginated(session: requests.Session, rower_id: str, date_from: str, date_to: str) -> list[dict]:
+
+    base = (f"https://log.concept2.com/api/users/{rower_id}/results"
+            f"?from={date_from}&to={date_to}&number={PER_PAGE}")
     
-
-# Max allowed by Concept2 docs
-PER_PAGE = 250
-PAGE_SLEEP_SEC = 0.25  # be polite to the API
-
-def fetch_all_results_paginated(session, rower_id: str, date_from: str, date_to: str) -> list[dict]:
-    """
-    Fetch all results in [date_from, date_to] following Concept2 pagination.
-    Uses number=<PER_PAGE>&page=<n> and stops when current_page >= total_pages.
-    Falls back gracefully if meta.pagination is missing.
-    """
-    base = f"https://log.concept2.com/api/users/{rower_id}/results?from={date_from}&to={date_to}&number={PER_PAGE}"
-    items: list[dict] = []
+    all_results:list[dict] = []
     page = 1
     next_url = f"{base}&page={page}"
 
@@ -253,9 +256,8 @@ def fetch_all_results_paginated(session, rower_id: str, date_from: str, date_to:
         if not data or "data" not in data:
             break
 
-        page_items = data["data"] or []
-        items.extend(page_items)
-        log.info("Fetched page %s (%s items, total so far %s)", page, len(page_items), len(items))
+        results_this_page = data["data"] or []
+        all_results.extend(results_this_page)
 
         meta = (data.get("meta") or {}).get("pagination") or {}
         current = meta.get("current_page", page)
@@ -263,6 +265,7 @@ def fetch_all_results_paginated(session, rower_id: str, date_from: str, date_to:
         links = meta.get("links") or {}
         next_link = links.get("next")
 
+        #iterating through the pages if result is too large
         if next_link:
             next_url = next_link
             page = current + 1
@@ -274,108 +277,111 @@ def fetch_all_results_paginated(session, rower_id: str, date_from: str, date_to:
                 next_url = None
 
         if next_url:
-            time.sleep(PAGE_SLEEP_SEC)
-
-    return items
+            time.sleep(PAGE_SLEEP_SEC + random.uniform(JITTER_MIN, JITTER_MAX))
 
 
-    
+    return all_results
 
+
+#fetch distinct workouts with strokes
 def fetch_and_build_for_rower(rower: dict, date_from: str, date_to: str) -> List[Tuple]:
-    """
-    Worker: fetch all workouts for a rower and build DB tuples.
-    Returns a list of tuples. No DB writes here.
-    Creates its own hardened session (do not share sessions across threads).
-    """
-    rows: List[Tuple] = []
+
+    workout_rows: List[Tuple] = []
     worker_session = make_session()
+
     try:
         rid = rower["partner_id"]
-        items = fetch_all_results_paginated(worker_session, rid, date_from, date_to)
-        if not items:
-            log.warning("No workouts found for %s", rower["name"])
-            return rows
+        all_results = fetch_all_results_paginated(worker_session, rid, date_from, date_to)
 
-        for w in items:
+        if not all_results:
+            log.warning("No workouts found for %s", rower["name"])
+            return workout_rows
+
+        for w in all_results:
             tid = w.get("id")
             if not tid or "distance" not in w:
                 continue
             stroke_json = maybe_fetch_strokes(worker_session, rid, tid, w.get("stroke_data", False))
-            rows.append(build_workout_tuple(rid, rower["name"], w, stroke_json))
-        return rows
+            workout_rows.append(build_workout_tuple(rid, rower["name"], w, stroke_json))
+        return workout_rows
     except Exception:
         log.exception("Worker failed for %s", rower.get("name"))
-        return rows
+        return workout_rows
     finally:
         try:
             worker_session.close()
         except Exception:
             log.exception("Error closing worker session")
 
+connection = sqlite3.connect('team_data.db')
+cursor = setup_db(connection)
 
-start_time = time.time()
-try:
-    # 1) Login + get rowers
-    rowers = login_and_get_rowers(session)  # dict keyed by partner_id
-    if not rowers:
-        raise SystemExit("No rowers found; aborting.")
+def main():
 
-    # 2) Upsert rowers first (cheap) so FK inserts are valid
-    for _, rower in rowers.items():
-        insert_rower(connection, cursor, rower)
+    start_time = time.time()
+    try:
+        # 1) Login + get rowers
+        rowers = login_and_get_rowers(session)  # dict keyed by partner_id
+        if not rowers:
+            raise SystemExit("No rowers found; aborting.")
 
-    date_from, date_to = build_date_range(None)  # or hardcode your window
-
-    # 3) Fetch/process concurrently (network), write sequentially (DB)
-    MAX_WORKERS = 8 # tune 4–8 based on rate limits / network
-
-    futures = {}
-    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as ex:
+        # 2) Upsert rowers first so FK inserts are valid
         for _, rower in rowers.items():
-            # Optional: log latest known date
-            latest_date = get_latest_workout_date(cursor, rower["partner_id"])
-            log.info("%s has latest record on: %s", rower["name"], latest_date)
+            insert_rower(connection, cursor, rower)
 
-            futures[ex.submit(fetch_and_build_for_rower, rower, date_from, date_to)] = rower
+        date_from, date_to = build_date_range(None)  # or hardcode your window
 
-        for fut in as_completed(futures):
-            rower = futures[fut]
-            name = rower["name"]
-            try:
-                rows = fut.result()  # List[Tuple] for this rower
-            except Exception:
-                log.exception("Worker future failed for %s", name)
-                continue
+        MAX_WORKERS = 8 # tune 4–8 based on rate limits / network
 
-            if not rows:
-                continue
+        futures = {}
+        with ThreadPoolExecutor(max_workers=MAX_WORKERS) as ex:
+            for _, rower in rowers.items():
 
-            # DB writes happen here in the main thread (safe for SQLite)
-            batch = []
-            for t in rows:
-                batch.append(t)
-                if len(batch) >= BATCH_SIZE:
+                latest_date = get_latest_workout_date(cursor, rower["partner_id"])
+                log.info("%s has latest record on: %s", rower["name"], latest_date)
+                futures[ex.submit(fetch_and_build_for_rower, rower, date_from, date_to)] = rower
+
+            for fut in as_completed(futures):
+                rower = futures[fut]
+                name = rower["name"]
+                try:
+                    rows = fut.result()  
+                except Exception:
+                    log.exception("Worker future failed for %s", name)
+                    continue
+
+                if not rows:
+                    continue
+
+                batch = []
+                for t in rows:
+                    batch.append(t)
+                    if len(batch) >= BATCH_SIZE:
+                        inserted = insert_workout(connection, cursor, batch)
+                        log.info("✅ Batch %s (new: %s) for %s", len(batch), inserted, name)
+                        batch.clear()
+
+                if batch:
                     inserted = insert_workout(connection, cursor, batch)
-                    log.info("✅ Batch %s (new: %s) for %s", len(batch), inserted, name)
-                    batch.clear()
+                    log.info("✅ Remaining %s (new: %s) for %s", len(batch), inserted, name)
 
-            if batch:
-                inserted = insert_workout(connection, cursor, batch)
-                log.info("✅ Remaining %s (new: %s) for %s", len(batch), inserted, name)
+        elapsed = time.time() - start_time
+        log.info("Script ran successfully! Elapsed time: %.2fs", elapsed)
 
-    elapsed = time.time() - start_time
-    log.info("Script ran successfully! Elapsed time: %.2fs", elapsed)
+    finally:
 
-finally:
+        try:
+            connection.close()
+            log.info("SQLite connection closed.")
+        except Exception:
+            log.exception("Error while closing SQLite connection")
 
-    try:
-        connection.close()
-        log.info("SQLite connection closed.")
-    except Exception:
-        log.exception("Error while closing SQLite connection")
+        try:
+            session.close()
+            log.info("HTTP session closed.")
+        except Exception:
+            log.exception("Error while closing HTTP session")
 
-    try:
-        session.close()
-        log.info("HTTP session closed.")
-    except Exception:
-        log.exception("Error while closing HTTP session")
+
+if __name__ == "__main__":
+    main()
