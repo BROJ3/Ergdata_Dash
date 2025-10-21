@@ -22,7 +22,7 @@ df = pd.read_sql_query(
 )
 
 df["distance"] = df["distance"].astype(float)
-df["hour"]=df.to_datetime(df["hour"], format = "%H:%M:%S").dt.hour
+df["hour"]=pd.to_datetime(df["hour"], format = "%H:%M:%S").dt.hour
 df["time"] = df["time"].astype(int)
 
 
@@ -33,7 +33,7 @@ def parse_json_maybe(js):
     except Exception:
         return None
 
-df["stroke_data"] = df["stroke_data"].apple(parse_json_maybe)
+df["stroke_data"] = df["stroke_data"].apply(parse_json_maybe)
 
 df=df.sort_values(["name","date"])
 
@@ -46,32 +46,6 @@ rows = cursor.fetchall()
 
 data = []
 
-# defining data
-for row in rows:
-    name = row[0]
-    distance = row[1]
-    date = row[2]
-    weekday = row[3]
-    hour = row[4]
-    time = row[5]
-    stroke_data = row[6]
-
-    if stroke_data:
-        stroke_data = json.loads(stroke_data)
-    else:
-        stroke_data = None
-
-    data.append({
-        'name': name,
-        'distance': float(distance),
-        'date': datetime.strptime(str(date), "%Y-%m-%d"),
-        'weekday': weekday,
-        'hour': datetime.strptime(str(hour), "%H:%M:%S").hour,
-        'time': int(time),
-        'stroke_data': stroke_data
-    })
-
-data.sort(key=lambda x: (x['name'], x['date']))
 
 
 df["cumulative_distance"] = df.groupby("name")["distance"].cumsum()
@@ -92,28 +66,36 @@ df["time_of_day"] = df["hour"].apply(tod)
 distance_by_tod = (
     df[df["time_of_day"].isin(["Morning","Midday","Evening"])]
     .groupby("time_of_day", as_index=False)["distance"].sum()
-    .sort_values("time_of_dat")
+    .sort_values("time_of_day")
 )
 
 
 weekday_order = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
-df["weekday"] = pd.Categorical(df["weekday"], categories = weekday_order, ordered = True)
+df["weekday"] = pd.Categorical(df["weekday"], categories=weekday_order, ordered=True)
 
 distance_by_weekday = (
-    df.groupby("weekday", as_index=False)["distance"].sum().sort_values("weekday")
+    df.groupby("weekday", as_index=False, observed=False)["distance"]
+      .sum()
+      .sort_values("weekday")
 )
 
 
-START=pd.Timestamp("2024-11-01")
-df["week_num"]=((df["date"] - START).dt.days // 7 )+1
+START = pd.Timestamp("2024-11-01")
+df["week_num"] = ((df["date"] - START).dt.days // 7) + 1
 
-
+# total distance per week
 weekly_totals = df.groupby("week_num", as_index=False)["distance"].sum()
 
+# rower who rowed the most in each week
 idx = df.groupby("week_num")["distance"].idxmax()
-weekly_winner = df.loc[idx, ["week_num","name"].rename(columns = {"name":"most_rowed"})]
+weekly_winner = (
+    df.loc[idx, ["week_num", "name"]]
+      .rename(columns={"name": "most_rowed"})
+)
 
-weekly_leaderboard = weekly_totals.merge(weekly_winner, on = "week_num")
+# combine totals + winners
+weekly_leaderboard = weekly_totals.merge(weekly_winner, on="week_num")
+
 
 
 
@@ -126,6 +108,11 @@ for entry in data:
     weekday = entry['weekday']
     distance = entry['distance']
 
+    distance_by_weekday = (
+        df.groupby("weekday", as_index=False, observed=False)["distance"]
+        .sum()
+        .sort_values("weekday")
+    )
 
     # daytime segregation of workouts
     if 5 <= hour < 11:
@@ -152,19 +139,15 @@ for entry in data:
     rower_weekly_totals[week][name] += distance
 
 
-
-weeks = 0
-for week, totals in rower_weekly_totals.items():
-    if week not in weekly_leaderboard:
-        weekly_leaderboard[week] = {'distance': 0, 'most_rowed': None}
-
-    weekly_leaderboard[week]['distance'] = sum(totals.values())
-    weekly_leaderboard[week]['most_rowed'] = max(totals, key=totals.get)
-
 app = dash.Dash(__name__)
 server = app.server
 
-rowers_with_strokes = sorted({entry['name'] for entry in data if entry['stroke_data']})
+rowers_with_strokes = (
+    df[df["stroke_data"].notna()]["name"].drop_duplicates()
+    .sort_values()
+    .tolist()
+    )
+    
 rower_options = [{'label': r, 'value': r} for r in rowers_with_strokes]
 
 app.layout = html.Div(
@@ -221,8 +204,8 @@ app.layout = html.Div(
                     children=[
                         html.Tr([html.Th("Week"), html.Th("Team's meters rowed"), html.Th("Most Rowed")])
                     ] + [
-                        html.Tr([html.Td(row.week_num)), html.Td(int(row.distance)), html.Td(row.most_rowed)])
-                        for week, data in sorted(weekly_leaderboard.items())
+                        html.Tr([html.Td(int(row.week_num)), html.Td(int(row.distance)), html.Td(row.most_rowed)])
+                        for row in weekly_leaderboard.itertuples(index=False)
                     ]
                 )
             ]
@@ -274,16 +257,18 @@ app.layout = html.Div(
     Output('workout-dropdown', 'options'),
     Input('rower-dropdown', 'value')
 )
-def update_workout_dropdown(selected_rower):
-    options = []
-    for entry in data:
-        if entry['name'] == selected_rower and entry['stroke_data']:
-            label = f"{entry['date'].strftime('%Y-%m-%d')} - {entry['distance']}m"
-            value = json.dumps(entry['stroke_data'])
-            options.append({'label': label, 'value': value})
 
-    options.sort(key=lambda x: (x['label']), reverse=True)  # most recent first
-    return options
+
+def update_workout_dropdown(selected_rower):
+    if not selected_rower:
+        return []
+    sub = df[(df["name"] == selected_rower) & (df["stroke_data"].notna())].copy()
+    sub["label"] = sub["date"].dt.strftime("%Y-%m-%d") + " - " + sub["distance"].astype(int).astype(str) + "m"
+    # store the raw JSON string for the callback (dash expects JSON-serializable)
+    sub["value"] = sub["stroke_data"].apply(json.dumps)
+    sub = sub.sort_values("date", ascending=False)
+    return sub[["label", "value"]].to_dict("records")
+
 
 @app.callback(
     Output('workout-stroke-graph', 'figure'),
