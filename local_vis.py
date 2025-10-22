@@ -351,12 +351,24 @@ def _update_top_section(flt):
         labels={'cumulative_distance': 'Cumulative Distance', 'date': 'Date', 'name': 'Rower'}
     )
 
-    # 3) pie by time-of-day
-    tod_tbl = (sub[sub["time_of_day"].isin(["Morning","Midday","Evening"])]
-                 .groupby("time_of_day", as_index=False)["distance"].sum()
-                 .sort_values("time_of_day"))
-    fig_tod = px.pie(tod_tbl, names="time_of_day", values="distance",
-                     title="Distance by Time of Day")
+    # 3) pie by time-of-day (force stable categories + order)
+    tod_order = ["Morning", "Midday", "Evening"]
+    tod_tbl = (sub[sub["time_of_day"].isin(tod_order)]
+                .groupby("time_of_day", as_index=False)["distance"].sum())
+
+    # reindex to ensure all slices always exist
+    tod_tbl = tod_tbl.set_index("time_of_day").reindex(tod_order, fill_value=0).reset_index()
+
+    fig_tod = px.pie(
+        tod_tbl,
+        names="time_of_day",
+        values="distance",
+        title="Distance by Time of Day",
+    )
+    # stability hints
+    fig_tod.update_traces(sort=False)                      # don't re-order slices
+    fig_tod.update_layout(transition_duration=400, uirevision="stay")
+
 
     # 4) bar by weekday
     weekday_order = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
