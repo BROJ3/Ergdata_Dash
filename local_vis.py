@@ -188,12 +188,13 @@ app.layout = html.Div(
 ),
 
 
-        dcc.Graph(id='cumulative-distance-graph', className="graph"),
+        dcc.Graph(id='cumulative-distance-graph', className="graph", animate=True,animation_options={"frame": {"duration": 1200}, "transition": {"duration": 1200}}),
         html.Div(
+            
             className="charts-row",
             children=[
-                dcc.Graph(id='time-of-day-pie-chart', className="chart"),
-                dcc.Graph(id='weekday-bar-chart', className="chart"),
+                dcc.Graph(id='time-of-day-pie-chart', className="chart",animate=True,animation_options={"frame": {"duration": 1200}, "transition": {"duration": 1200}}),
+                dcc.Graph(id='weekday-bar-chart', className="chart",animate=True,animation_options={"frame": {"duration": 1200}, "transition": {"duration": 1200}}),
             ]
         ),
         html.H2("Leaderboard", className="leaderboard-header"),
@@ -268,7 +269,8 @@ def set_date(start,end,flt):
     Output("filters", "data", allow_duplicate=True),
     Input("global-rower-filter", "value"),
     State("filters", "data"),
-    prevent_initial_call=True
+    prevent_initial_call=True,
+    debounce=True
 )
 def _set_rowers(names, flt):
     names = [] if not names else list(names)
@@ -388,8 +390,14 @@ def _update_top_section(flt):
             for r in leaderboard.itertuples(index=False)
         ]
     )
+    fig_cum.update_layout(transition_duration=400)
+    fig_tod.update_layout(transition_duration=400)
+    fig_wday.update_layout(transition_duration=400)
+
 
     return fig_cum, fig_tod, fig_wday, table
+
+
 
 
 @app.callback(
