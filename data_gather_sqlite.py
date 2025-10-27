@@ -27,8 +27,13 @@ STROKE_SEM = Semaphore(3)
 
 JITTER_MIN, JITTER_MAX = 0.05,0.20
 
-DEFAULT_FROM = "2024-11-01"
-DEFAULT_TO   = "2025-03-01"
+#season 2024
+#DEFAULT_FROM = "2024-11-01"
+#DEFAULT_TO   = "2025-03-01"
+
+#season 25
+DEFAULT_FROM = "2025-10-21"
+DEFAULT_TO   = "2026-03-01"
 
 
 #set up logs
@@ -126,6 +131,7 @@ def build_workout_tuple(rower_id: str, name: str, w: dict, stroke_json: str | No
     day_of_week = date_obj.strftime("%A")
 
     time_text = w.get("time", "00:00:00")
+
     try:
         h, m, s = map(int, time_text.split(":"))
         time_seconds = h * 3600 + m * 60 + s
@@ -147,6 +153,7 @@ def build_workout_tuple(rower_id: str, name: str, w: dict, stroke_json: str | No
         w.get("calories_total", 0),
         stroke_json,
     )
+
 
 # Connect to SQLite database
 def setup_db(conn: sqlite3.Connection) -> sqlite3.Cursor:

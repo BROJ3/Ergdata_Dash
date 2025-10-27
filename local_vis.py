@@ -1,13 +1,12 @@
 import sqlite3
 import plotly.express as px
 import dash
-from dash import dcc, html, no_update, State
+from dash import dcc, html, no_update, ctx
 from dash.dependencies import Input, Output, State
 from datetime import datetime
 import json
 import pandas as pd
 import numpy as np
-
 
 def apply_filters(df:pd.DataFrame, flt:dict) -> pd.DataFrame:
     sub = df
@@ -22,9 +21,6 @@ def apply_filters(df:pd.DataFrame, flt:dict) -> pd.DataFrame:
         sub=sub[sub["name"].isin(flt["name"])]
 
     return sub.copy()
-
-
-
 
 
 
