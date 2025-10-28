@@ -423,3 +423,80 @@
 2025-10-27 12:04:18,498 INFO Script ran successfully! Elapsed time: 256.62s
 2025-10-27 12:04:18,499 INFO SQLite connection closed.
 2025-10-27 12:04:18,499 INFO HTTP session closed.
+2025-10-28 12:00:04,951 INFO Login successful.
+2025-10-28 12:00:07,197 INFO Anthony  Forsht has latest record on: 2025-01-29
+2025-10-28 12:00:07,199 INFO Audrey Bell has latest record on: 2025-01-13
+2025-10-28 12:00:07,202 INFO Benjamin Tobin has latest record on: 2025-02-26
+2025-10-28 12:00:07,203 INFO Boris Jukic has latest record on: 2025-03-01
+2025-10-28 12:00:07,206 INFO Caitlyn Olive has latest record on: 2025-01-16
+2025-10-28 12:00:07,207 INFO Carter Evans has latest record on: 2025-03-01
+2025-10-28 12:00:07,209 INFO Eloise Dyer has latest record on: 2024-11-29
+2025-10-28 12:00:07,210 INFO Emilio Jakubek has latest record on: None
+2025-10-28 12:00:07,211 INFO Emma Cosgrove has latest record on: None
+2025-10-28 12:00:07,211 INFO Everitt Mastrototoro has latest record on: 2024-12-17
+2025-10-28 12:00:07,212 INFO Filip Marković has latest record on: 2025-02-08
+2025-10-28 12:00:07,212 INFO Flannery Hodgdon has latest record on: None
+2025-10-28 12:00:07,212 INFO Hailey McNitt has latest record on: None
+2025-10-28 12:00:07,212 INFO Isabelle  Brown has latest record on: None
+2025-10-28 12:00:07,212 INFO Katherine Bolebruch has latest record on: None
+2025-10-28 12:00:07,212 INFO Megan Miller has latest record on: None
+2025-10-28 12:00:07,213 INFO Ryan Graham has latest record on: None
+2025-10-28 12:00:07,213 INFO Ryan  Muldoon has latest record on: None
+2025-10-28 12:00:07,213 INFO Sarah Fish has latest record on: None
+2025-10-28 12:00:07,213 INFO Timothy Hewitt has latest record on: None
+2025-10-28 12:00:07,214 INFO Tom Kiefer has latest record on: None
+2025-10-28 12:00:07,214 INFO Toni Crnjak has latest record on: None
+2025-10-28 12:00:07,214 INFO Trent Crook has latest record on: None
+2025-10-28 12:00:07,214 INFO Vukota Miric has latest record on: None
+2025-10-28 12:00:07,214 INFO Wendy Shih has latest record on: None
+2025-10-28 12:00:10,673 INFO ✅ Batch 20 (new: 0) for Boris Jukic
+2025-10-28 12:00:10,673 INFO ✅ Batch 20 (new: 0) for Boris Jukic
+2025-10-28 12:00:10,673 INFO ✅ Batch 20 (new: 0) for Boris Jukic
+2025-10-28 12:00:10,674 INFO ✅ Batch 20 (new: 0) for Boris Jukic
+2025-10-28 12:00:10,674 INFO ✅ Batch 20 (new: 0) for Boris Jukic
+2025-10-28 12:00:10,674 INFO ✅ Remaining 13 (new: 0) for Boris Jukic
+2025-10-28 12:00:21,688 INFO ✅ Remaining 13 (new: 0) for Eloise Dyer
+2025-10-28 12:00:29,893 INFO ✅ Remaining 6 (new: 0) for Emma Cosgrove
+2025-10-28 12:00:36,716 INFO ✅ Batch 20 (new: 0) for Benjamin Tobin
+2025-10-28 12:00:36,717 INFO ✅ Remaining 1 (new: 0) for Benjamin Tobin
+2025-10-28 12:00:41,665 INFO ✅ Batch 20 (new: 20) for Emilio Jakubek
+2025-10-28 12:00:41,695 INFO ✅ Remaining 7 (new: 7) for Emilio Jakubek
+2025-10-28 12:00:45,490 INFO ✅ Batch 20 (new: 0) for Carter Evans
+2025-10-28 12:00:45,491 INFO ✅ Batch 20 (new: 0) for Carter Evans
+2025-10-28 12:00:45,492 INFO ✅ Remaining 2 (new: 0) for Carter Evans
+2025-10-28 12:00:52,610 INFO ✅ Remaining 14 (new: 0) for Everitt Mastrototoro
+2025-10-28 12:00:56,659 INFO ✅ Remaining 6 (new: 0) for Audrey Bell
+2025-10-28 12:01:00,470 INFO ✅ Batch 20 (new: 0) for Caitlyn Olive
+2025-10-28 12:01:00,472 INFO ✅ Batch 20 (new: 0) for Caitlyn Olive
+2025-10-28 12:01:00,472 INFO ✅ Remaining 3 (new: 0) for Caitlyn Olive
+2025-10-28 12:01:03,952 INFO ✅ Batch 20 (new: 0) for Filip Marković
+2025-10-28 12:01:03,953 INFO ✅ Remaining 9 (new: 0) for Filip Marković
+2025-10-28 12:01:22,206 INFO ✅ Batch 20 (new: 0) for Megan Miller
+2025-10-28 12:01:22,207 INFO ✅ Remaining 1 (new: 0) for Megan Miller
+2025-10-28 12:01:24,181 INFO ✅ Batch 20 (new: 0) for Anthony  Forsht
+2025-10-28 12:01:26,101 INFO ✅ Batch 20 (new: 0) for Flannery Hodgdon
+2025-10-28 12:01:26,102 INFO ✅ Remaining 14 (new: 0) for Flannery Hodgdon
+2025-10-28 12:01:37,497 INFO ✅ Remaining 9 (new: 0) for Isabelle  Brown
+2025-10-28 12:01:42,305 INFO ✅ Batch 20 (new: 0) for Hailey McNitt
+2025-10-28 12:01:42,305 INFO ✅ Remaining 7 (new: 0) for Hailey McNitt
+2025-10-28 12:01:55,210 INFO ✅ Batch 20 (new: 0) for Katherine Bolebruch
+2025-10-28 12:01:55,210 INFO ✅ Remaining 3 (new: 0) for Katherine Bolebruch
+2025-10-28 12:01:56,452 INFO ✅ Remaining 1 (new: 0) for Sarah Fish
+2025-10-28 12:02:00,268 INFO ✅ Remaining 3 (new: 0) for Tom Kiefer
+2025-10-28 12:02:09,214 INFO ✅ Remaining 13 (new: 0) for Vukota Miric
+2025-10-28 12:02:11,752 INFO ✅ Remaining 2 (new: 0) for Ryan Graham
+2025-10-28 12:02:30,422 INFO ✅ Batch 20 (new: 0) for Timothy Hewitt
+2025-10-28 12:02:30,423 INFO ✅ Batch 20 (new: 0) for Timothy Hewitt
+2025-10-28 12:02:30,423 INFO ✅ Remaining 10 (new: 0) for Timothy Hewitt
+2025-10-28 12:02:50,779 INFO ✅ Batch 20 (new: 0) for Wendy Shih
+2025-10-28 12:02:50,781 INFO ✅ Batch 20 (new: 0) for Wendy Shih
+2025-10-28 12:02:50,781 INFO ✅ Remaining 4 (new: 0) for Wendy Shih
+2025-10-28 12:02:59,386 INFO ✅ Remaining 7 (new: 0) for Trent Crook
+2025-10-28 12:03:23,429 INFO ✅ Batch 20 (new: 20) for Ryan  Muldoon
+2025-10-28 12:03:23,438 INFO ✅ Batch 20 (new: 20) for Ryan  Muldoon
+2025-10-28 12:03:23,450 INFO ✅ Batch 20 (new: 20) for Ryan  Muldoon
+2025-10-28 12:03:23,465 INFO ✅ Batch 20 (new: 20) for Ryan  Muldoon
+2025-10-28 12:03:23,479 INFO ✅ Batch 20 (new: 20) for Ryan  Muldoon
+2025-10-28 12:03:23,493 INFO ✅ Batch 20 (new: 20) for Ryan  Muldoon
+2025-10-28 12:03:23,511 INFO ✅ Batch 20 (new: 20) for Ryan  Muldoon
+2025-10-28 12:03:23,521 INFO ✅ Remaining 9 (new: 9) for Ryan  Muldoon

@@ -32,8 +32,11 @@ JITTER_MIN, JITTER_MAX = 0.05,0.20
 #DEFAULT_TO   = "2025-03-01"
 
 #season 25
-DEFAULT_FROM = "2025-10-21"
-DEFAULT_TO   = "2026-03-01"
+DEFAULT_FROM = "2024-10-21"
+DEFAULT_TO   = "2025-03-01"
+
+
+# only keep these workout types
 
 
 #set up logs
@@ -305,9 +308,13 @@ def fetch_and_build_for_rower(rower: dict, date_from: str, date_to: str) -> List
             return workout_rows
 
         for w in all_results:
+
+
             tid = w.get("id")
             if not tid or "distance" not in w:
                 continue
+                
+
             stroke_json = maybe_fetch_strokes(worker_session, rid, tid, w.get("stroke_data", False))
             workout_rows.append(build_workout_tuple(rid, rower["name"], w, stroke_json))
         return workout_rows
@@ -328,19 +335,20 @@ def main():
     start_time = time.time()
     try:
         # 1) Login + get rowers
-        rowers = login_and_get_rowers(session)  # dict keyed by partner_id
+        rowers = login_and_get_rowers(session)  
         if not rowers:
             raise SystemExit("No rowers found; aborting.")
 
-        # 2) Upsert rowers first so FK inserts are valid
+        # Upsert rowers 
         for _, rower in rowers.items():
             insert_rower(connection, cursor, rower)
 
-        date_from, date_to = build_date_range(None)  # or hardcode your window
+        date_from, date_to = build_date_range(None)  
 
-        MAX_WORKERS = 8 # tune 4–8 based on rate limits / network
+        MAX_WORKERS = 8 # tune 4–8 
 
         futures = {}
+        
         with ThreadPoolExecutor(max_workers=MAX_WORKERS) as ex:
             for _, rower in rowers.items():
 

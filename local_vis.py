@@ -23,7 +23,6 @@ def apply_filters(df:pd.DataFrame, flt:dict) -> pd.DataFrame:
     return sub.copy()
 
 
-
 #loading into dataframe
 connection = sqlite3.connect('team_data.db')
 
@@ -227,11 +226,11 @@ app.layout = html.Div(
                         dcc.Dropdown(
                             id='metric-dropdown',
                             options=[
-                                {'label': 'Strokes Per Minute', 'value': 'spm'},
+                                {'label': 'Pace/500m', 'value': 'p'},
                                 {'label': 'Heart Rate', 'value': 'hr'},
-                                {'label': 'Pace/500m', 'value': 'p'}
+                                {'label': 'Strokes Per Minute', 'value': 'spm'}
                             ],
-                            value='spm'
+                            value='p'
                         )
                     ]
                 )
@@ -310,20 +309,30 @@ def clear_filters(n):
 
 @app.callback(
     Output('workout-dropdown', 'options'),
+    Output('workout-dropdown', 'value'),
     Input('rower-dropdown', 'value')
 )
 
 
 def update_workout_dropdown(selected_rower):
     if not selected_rower:
-        return []
+        return [], None
+
+    # filter for this rower’s workouts with stroke data
     sub = df[(df["name"] == selected_rower) & (df["stroke_data"].notna())].copy()
+
+    # build dropdown label and value
     sub["label"] = sub["date"].dt.strftime("%Y-%m-%d") + " - " + sub["distance"].astype(int).astype(str) + "m"
-    
-    # store the raw JSON string for the callback (dash expects JSON-serializable)
     sub["value"] = sub["stroke_data"].apply(json.dumps)
+
+    # sort so most recent workout is first
     sub = sub.sort_values("date", ascending=False)
-    return sub[["label", "value"]].to_dict("records")
+
+    # pick first workout as default value (latest)
+    default_value = sub.iloc[0]["value"] if not sub.empty else None
+
+    return sub[["label", "value"]].to_dict("records"), default_value
+
 
 @app.callback(
     Output('cumulative-distance-graph', 'figure'),
@@ -421,9 +430,9 @@ def update_workout_graph(selected_workout, selected_metric):
     strokes = stroke_data['data']
 
     metric_labels = {
-        'spm': 'Strokes per Minute',
+        'p': 'Pace',
         'hr': 'Heart Rate',
-        'p': 'Pace'
+        'spm': 'Strokes per Minute'
     }
 
     stroke_x = list(range(len(strokes)))
