@@ -26,7 +26,7 @@ def apply_filters(df:pd.DataFrame, flt:dict) -> pd.DataFrame:
 #loading into dataframe
 connection = sqlite3.connect('team_data.db')
 
-df = pd.read_sql_query(
+df = pd.read_sql_query( 
     """
     SELECT name, distance, date, weekday, hour, time, stroke_data
     FROM crnjakt_workouts

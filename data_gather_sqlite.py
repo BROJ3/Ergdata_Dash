@@ -32,8 +32,8 @@ JITTER_MIN, JITTER_MAX = 0.05,0.20
 #DEFAULT_TO   = "2025-03-01"
 
 #season 25
-DEFAULT_FROM = "2024-10-21"
-DEFAULT_TO   = "2025-03-01"
+DEFAULT_FROM = "2025-10-21"
+DEFAULT_TO   = "2026-03-01"
 
 
 # only keep these workout types
