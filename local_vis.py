@@ -8,6 +8,8 @@ import json
 import pandas as pd
 import numpy as np
 
+COACHES = {"Toni Crnjak", "Boris Jukic", "Martijn Ronk"}
+
 def apply_filters(df:pd.DataFrame, flt:dict) -> pd.DataFrame:
     sub = df
 
@@ -66,13 +68,6 @@ def tod(h):
 
 df["time_of_day"] = df["hour"].apply(tod)
 
-'''
-distance_by_tod = (
-    df[df["time_of_day"].isin(["Morning","Midday","Evening"])]
-    .groupby("time_of_day", as_index=False)["distance"].sum()
-    .sort_values("time_of_day")
-)'''
-
 
 weekday_order = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
 df["weekday"] = pd.Categorical(df["weekday"], categories=weekday_order, ordered=True)
@@ -86,22 +81,6 @@ df["weekday"] = pd.Categorical(df["weekday"], categories=weekday_order, ordered=
 
 START = pd.Timestamp("2024-11-01")
 df["week_num"] = ((df["date"] - START).dt.days // 7) + 1
-
-'''
-# total distance per week
-weekly_totals = df.groupby("week_num", as_index=False)["distance"].sum()
-
-# rower who rowed the most in each week
-idx = df.groupby("week_num")["distance"].idxmax()
-weekly_winner = (
-    df.loc[idx, ["week_num", "name"]]
-      .rename(columns={"name": "most_rowed"})
-)
-
-# combine totals + winners
-weekly_leaderboard = weekly_totals.merge(weekly_winner, on="week_num")
-
-'''
 
 
 
@@ -193,6 +172,17 @@ app.layout = html.Div(
             ]
         ),
         html.H2("Leaderboard", className="leaderboard-header"),
+
+        html.Div(
+        style={"margin":"8px 0 16px 0"},
+        children=dcc.Checklist(
+            id="include-coaches",
+            options=[{"label": "Include coaches", "value": "yes"}],
+            value=[],  # empty -> coaches excluded by default
+            inputStyle={"marginRight":"6px"}
+        )
+    ),
+
         html.Div(id="leaderboard-table", className="leaderboard-container"),
 
 
@@ -339,12 +329,25 @@ def update_workout_dropdown(selected_rower):
     Output('time-of-day-pie-chart', 'figure'),
     Output('weekday-bar-chart', 'figure'),
     Output('leaderboard-table', 'children'),
-    Input('filters', 'data')
+    Input('filters', 'data'),
+    Input('include-coaches', 'value')   
+
 )
 
-def _update_top_section(flt):
-    # 1) apply filters
+def _update_top_section(flt, include_coaches):
+
+
+
+    # 1) apply filters for charts
     sub = apply_filters(df, flt or {})
+
+    #exclude coaches by default
+    include_flag = (include_coaches or [])
+    if "yes" in include_flag:
+        sub_lb = sub.copy()
+    else:
+        sub_lb = sub[~sub["name"].isin(COACHES)].copy()
+
 
     # 2) cumulative by rower
     cum = (sub.sort_values(["name","date"])
@@ -377,6 +380,7 @@ def _update_top_section(flt):
 
     # 4) bar by weekday
     weekday_order = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
+
     sub["weekday"] = pd.Categorical(sub["weekday"], categories=weekday_order, ordered=True)
     wday_tbl = (sub.groupby("weekday", as_index=False, observed=False)["distance"]
                   .sum().sort_values("weekday"))
@@ -384,29 +388,38 @@ def _update_top_section(flt):
                       title="Distance by Weekday",
                       labels={'weekday': 'Weekday', 'distance': 'Distance'})
 
-    # 5) leaderboard (compute from filtered data)
-    START = pd.Timestamp("2024-11-01")
-    sub["week_num"] = ((sub["date"] - START).dt.days // 7) + 1
-    weekly_totals = sub.groupby("week_num", as_index=False)["distance"].sum()
-    if not sub.empty:
-        idx = sub.groupby("week_num")["distance"].idxmax()
-        weekly_winner = (sub.loc[idx, ["week_num","name"]]
-                           .rename(columns={"name":"most_rowed"}))
+        # 5) leaderboard (now computed from sub_lb)
+    START = pd.Timestamp("2025-10-21")
+    sub_lb["week_num"] = ((sub_lb["date"] - START).dt.days // 7) + 1
+
+    weekly_totals = sub_lb.groupby("week_num", as_index=False)["distance"].sum()
+
+    if not sub_lb.empty:
+        # winner among filtered set
+        idx = sub_lb.groupby("week_num")["distance"].idxmax()
+        weekly_winner = (
+            sub_lb.loc[idx, ["week_num", "name"]]
+                  .rename(columns={"name": "most_rowed"})
+        )
         leaderboard = weekly_totals.merge(weekly_winner, on="week_num", how="left")
     else:
-        leaderboard = weekly_totals.assign(most_rowed=np.nan)
+        # no rows after filtering
+        leaderboard = pd.DataFrame(columns=["week_num", "distance", "most_rowed"])
 
-    # Build table rows as HTML
+    # Build table rows as HTML  <-- make sure THIS is not indented under the 'else' above
     table = html.Table(
         children=[
             html.Tr([html.Th("Week"), html.Th("Team's meters rowed"), html.Th("Most Rowed")])
         ] + [
-            html.Tr([html.Td(int(r.week_num)),
-                     html.Td(f"{int(r.distance):,}"),
-                     html.Td("" if pd.isna(r.most_rowed) else r.most_rowed)])
+            html.Tr([
+                html.Td(int(r.week_num)),
+                html.Td(f"{int(r.distance):,}" if pd.notna(r.distance) else "0"),
+                html.Td("" if pd.isna(r.most_rowed) else r.most_rowed)
+            ])
             for r in leaderboard.itertuples(index=False)
         ]
     )
+
     fig_cum.update_layout(transition_duration=400)
     fig_tod.update_layout(transition_duration=400)
     fig_wday.update_layout(transition_duration=400)

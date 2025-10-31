@@ -36,9 +36,6 @@ DEFAULT_FROM = "2025-10-21"
 DEFAULT_TO   = "2026-03-01"
 
 
-# only keep these workout types
-
-
 #set up logs
 logging.basicConfig(
     level=logging.INFO,
