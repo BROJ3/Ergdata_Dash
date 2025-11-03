@@ -46,7 +46,7 @@ log = logging.getLogger("concept2")
 
 access_token = config.access_token  
 
-#Create a requests.Session with auth, retries, and backoff
+#Create a requests.Session with auth and retries
 def make_session() -> requests.Session:
     s = requests.Session()
     s.headers.update({'Authorization': f'Bearer {access_token}'})
@@ -62,7 +62,6 @@ def make_session() -> requests.Session:
 
 # global session for main thread use
 session = make_session()
-
 
 #  Login to Concept2 and scrape the team roster table
 def login_and_get_rowers(session) -> dict:
