@@ -810,3 +810,65 @@
 2025-11-03 12:01:02,857 INFO Script ran successfully! Elapsed time: 60.26s
 2025-11-03 12:01:02,857 INFO SQLite connection closed.
 2025-11-03 12:01:02,858 INFO HTTP session closed.
+2025-11-04 12:00:07,533 INFO Login successful.
+2025-11-04 12:00:09,833 INFO Anthony  Forsht has latest record on: 2025-11-03
+2025-11-04 12:00:09,836 INFO Audrey Bell has latest record on: None
+2025-11-04 12:00:09,838 INFO Benjamin Tobin has latest record on: None
+2025-11-04 12:00:09,841 INFO Boris Jukic has latest record on: 2025-11-03
+2025-11-04 12:00:09,842 INFO Caitlyn Olive has latest record on: 2025-10-24
+2025-11-04 12:00:09,845 INFO Carter Evans has latest record on: None
+2025-11-04 12:00:09,846 INFO Eloise Dyer has latest record on: 2025-10-31
+2025-11-04 12:00:09,848 INFO Emilio Jakubek has latest record on: 2025-11-03
+2025-11-04 12:00:09,849 INFO Emma Cosgrove has latest record on: None
+2025-11-04 12:00:09,850 INFO Everitt Mastrototoro has latest record on: 2025-11-03
+2025-11-04 12:00:09,850 INFO Filip Marković has latest record on: None
+2025-11-04 12:00:09,850 INFO Flannery Hodgdon has latest record on: None
+2025-11-04 12:00:09,850 INFO Gabriel St.Martin has latest record on: 2025-11-03
+2025-11-04 12:00:09,850 INFO Hailey McNitt has latest record on: None
+2025-11-04 12:00:09,850 INFO Isabelle  Brown has latest record on: None
+2025-11-04 12:00:09,850 INFO Katherine Bolebruch has latest record on: None
+2025-11-04 12:00:09,850 INFO Martijn Ronk has latest record on: 2025-10-31
+2025-11-04 12:00:09,850 INFO Megan Miller has latest record on: None
+2025-11-04 12:00:09,850 INFO Remington Tanzi has latest record on: 2025-10-29
+2025-11-04 12:00:09,850 INFO Ren Manning has latest record on: 2025-11-03
+2025-11-04 12:00:09,851 INFO Ryan Graham has latest record on: None
+2025-11-04 12:00:09,851 INFO Ryan  Muldoon has latest record on: 2025-10-31
+2025-11-04 12:00:09,851 INFO Sarah Fish has latest record on: None
+2025-11-04 12:00:09,851 INFO Timothy Hewitt has latest record on: None
+2025-11-04 12:00:09,851 INFO Tom Kiefer has latest record on: None
+2025-11-04 12:00:09,851 INFO Toni Crnjak has latest record on: 2025-11-03
+2025-11-04 12:00:09,851 INFO Trent Crook has latest record on: None
+2025-11-04 12:00:09,851 INFO Vukota Miric has latest record on: None
+2025-11-04 12:00:09,851 INFO Wendy Shih has latest record on: None
+2025-11-04 12:00:11,673 WARNING No workouts found for Benjamin Tobin
+2025-11-04 12:00:11,786 WARNING No workouts found for Carter Evans
+2025-11-04 12:00:12,378 INFO ✅ Remaining 17 (new: 0) for Boris Jukic
+2025-11-04 12:00:13,528 WARNING No workouts found for Audrey Bell
+2025-11-04 12:00:14,001 WARNING No workouts found for Emma Cosgrove
+2025-11-04 12:00:14,429 WARNING No workouts found for Filip Marković
+2025-11-04 12:00:15,113 INFO ✅ Remaining 1 (new: 0) for Caitlyn Olive
+2025-11-04 12:00:15,264 INFO ✅ Remaining 1 (new: 0) for Emilio Jakubek
+2025-11-04 12:00:15,728 WARNING No workouts found for Flannery Hodgdon
+2025-11-04 12:00:16,614 WARNING No workouts found for Hailey McNitt
+2025-11-04 12:00:17,414 WARNING No workouts found for Katherine Bolebruch
+2025-11-04 12:00:18,206 WARNING No workouts found for Isabelle  Brown
+2025-11-04 12:00:19,258 WARNING No workouts found for Megan Miller
+2025-11-04 12:00:21,637 WARNING No workouts found for Ryan Graham
+2025-11-04 12:00:23,444 INFO ✅ Remaining 2 (new: 0) for Anthony  Forsht
+2025-11-04 12:00:25,590 WARNING No workouts found for Sarah Fish
+2025-11-04 12:00:26,069 INFO ✅ Remaining 1 (new: 0) for Martijn Ronk
+2025-11-04 12:00:27,095 WARNING No workouts found for Timothy Hewitt
+2025-11-04 12:00:27,323 WARNING No workouts found for Tom Kiefer
+2025-11-04 12:00:27,643 INFO ✅ Remaining 6 (new: 0) for Eloise Dyer
+2025-11-04 12:00:28,332 WARNING No workouts found for Trent Crook
+2025-11-04 12:00:28,908 WARNING No workouts found for Vukota Miric
+2025-11-04 12:00:28,954 INFO ✅ Remaining 2 (new: 0) for Ryan  Muldoon
+2025-11-04 12:00:29,371 INFO ✅ Remaining 1 (new: 0) for Remington Tanzi
+2025-11-04 12:00:29,582 WARNING No workouts found for Wendy Shih
+2025-11-04 12:00:34,449 INFO ✅ Remaining 4 (new: 0) for Gabriel St.Martin
+2025-11-04 12:00:38,068 INFO ✅ Remaining 12 (new: 0) for Everitt Mastrototoro
+2025-11-04 12:00:41,971 INFO ✅ Remaining 6 (new: 0) for Ren Manning
+2025-11-04 12:00:49,640 INFO ✅ Remaining 16 (new: 0) for Toni Crnjak
+2025-11-04 12:00:49,640 INFO Script ran successfully! Elapsed time: 47.66s
+2025-11-04 12:00:49,641 INFO SQLite connection closed.
+2025-11-04 12:00:49,642 INFO HTTP session closed.
