@@ -406,7 +406,6 @@ def _update_top_section(flt, include_coaches):
         # no rows after filtering
         leaderboard = pd.DataFrame(columns=["week_num", "distance", "most_rowed"])
 
-    # Build table rows as HTML  <-- make sure THIS is not indented under the 'else' above
     table = html.Table(
         children=[
             html.Tr([html.Th("Week"), html.Th("Team's meters rowed"), html.Th("Most Rowed")])
