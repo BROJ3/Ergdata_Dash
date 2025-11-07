@@ -75,6 +75,7 @@ def login_and_get_rowers(session) -> dict:
         return {}
 
     log.info("Login successful.")
+    log.info("Active rowers this season:")
 
     resp = session.get(partners_url)
     soup = BeautifulSoup(resp.text, "html.parser")
@@ -236,7 +237,7 @@ def get_latest_workout_date(cursor, partner_id):
 access_token = config.access_token 
 
 def fetch_data(api_endpoint: str, sess: requests.Session | None = None):
-    """GET JSON with a hardened session (auth, retries, timeouts)."""
+
     s = sess or session
     try:
         r = s.get(api_endpoint, timeout=(5, 30))  # (connect, read)
@@ -300,7 +301,6 @@ def fetch_and_build_for_rower(rower: dict, date_from: str, date_to: str) -> List
         all_results = fetch_all_results_paginated(worker_session, rid, date_from, date_to)
 
         if not all_results:
-            log.warning("No workouts found for %s", rower["name"])
             return workout_rows
 
         for w in all_results:
@@ -349,7 +349,8 @@ def main():
             for _, rower in rowers.items():
 
                 latest_date = get_latest_workout_date(cursor, rower["partner_id"])
-                log.info("%s has latest record on: %s", rower["name"], latest_date)
+                if latest_date != None:
+                    log.info("%s has latest record on: %s", rower["name"], latest_date)
                 futures[ex.submit(fetch_and_build_for_rower, rower, date_from, date_to)] = rower
 
             for fut in as_completed(futures):
@@ -369,12 +370,15 @@ def main():
                     batch.append(t)
                     if len(batch) >= BATCH_SIZE:
                         inserted = insert_workout(connection, cursor, batch)
-                        log.info("✅ Batch %s (new: %s) for %s", len(batch), inserted, name)
+                        if inserted > 0:
+                            log.info(inserted)
+                            log.info("✅ Batch %s (new: %s) for %s", len(batch), inserted, name)
                         batch.clear()
 
                 if batch:
                     inserted = insert_workout(connection, cursor, batch)
-                    log.info("✅ Remaining %s (new: %s) for %s", len(batch), inserted, name)
+                    if inserted > 0:
+                        log.info("✅ Remaining %s (new: %s) for %s", len(batch), inserted, name)
 
         elapsed = time.time() - start_time
         log.info("Script ran successfully! Elapsed time: %.2fs", elapsed)
