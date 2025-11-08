@@ -122,6 +122,17 @@ app.layout = html.Div(
         html.H4("Data Winter 25/26", className="dashboard-header"),
 
 
+                html.Div(
+        style={"margin":"8px 0 16px 0"},
+        children=dcc.Checklist(
+            id="include-coaches",
+            options=[{"label": "Include coaches", "value": "yes"}],
+            value=[],  # empty -> coaches excluded by default
+            inputStyle={"marginRight":"6px"}
+                )
+            ),
+
+
         html.Div(
     className="filter-row",
     style={"display": "flex", "gap": "16px", "alignItems": "flex-end", "flexWrap": "wrap"},
@@ -173,15 +184,7 @@ app.layout = html.Div(
         ),
         html.H2("Leaderboard", className="leaderboard-header"),
 
-        html.Div(
-        style={"margin":"8px 0 16px 0"},
-        children=dcc.Checklist(
-            id="include-coaches",
-            options=[{"label": "Include coaches", "value": "yes"}],
-            value=[],  # empty -> coaches excluded by default
-            inputStyle={"marginRight":"6px"}
-        )
-    ),
+
 
         html.Div(id="leaderboard-table", className="leaderboard-container"),
 
@@ -338,16 +341,16 @@ def _update_top_section(flt, include_coaches):
 
 
 
-    # 1) apply filters for charts
+    # 1) apply filters common to all charts
     sub = apply_filters(df, flt or {})
 
-    #exclude coaches by default
+    # 2) apply coaches toggle globally (charts + leaderboard)
     include_flag = (include_coaches or [])
-    if "yes" in include_flag:
-        sub_lb = sub.copy()
-    else:
-        sub_lb = sub[~sub["name"].isin(COACHES)].copy()
+    if "yes" not in include_flag:
+        sub = sub[~sub["name"].isin(COACHES)].copy()
 
+    # leaderboards use the same 'sub'
+    sub_lb = sub.copy()
 
     # 2) cumulative by rower
     cum = (sub.sort_values(["name","date"])

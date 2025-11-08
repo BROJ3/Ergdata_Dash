@@ -996,3 +996,23 @@
 2025-11-06 12:00:51,777 INFO Script ran successfully! Elapsed time: 49.26s
 2025-11-06 12:00:51,778 INFO SQLite connection closed.
 2025-11-06 12:00:51,779 INFO HTTP session closed.
+2025-11-08 12:00:05,957 INFO Login successful.
+2025-11-08 12:00:05,960 INFO Active rowers this season:
+2025-11-08 12:00:07,595 INFO Anthony  Forsht has latest record on: 2025-11-03
+2025-11-08 12:00:07,602 INFO Boris Jukic has latest record on: 2025-11-07
+2025-11-08 12:00:07,604 INFO Caitlyn Olive has latest record on: 2025-10-24
+2025-11-08 12:00:07,608 INFO Eloise Dyer has latest record on: 2025-10-31
+2025-11-08 12:00:07,610 INFO Emilio Jakubek has latest record on: 2025-11-07
+2025-11-08 12:00:07,612 INFO Emma Cosgrove has latest record on: 2025-11-06
+2025-11-08 12:00:07,612 INFO Everitt Mastrototoro has latest record on: 2025-11-06
+2025-11-08 12:00:07,612 INFO Gabriel St.Martin has latest record on: 2025-11-07
+2025-11-08 12:00:07,612 INFO Martijn Ronk has latest record on: 2025-11-07
+2025-11-08 12:00:07,612 INFO Remington Tanzi has latest record on: 2025-11-06
+2025-11-08 12:00:07,612 INFO Ren Manning has latest record on: 2025-11-07
+2025-11-08 12:00:07,613 INFO Ryan  Muldoon has latest record on: 2025-10-31
+2025-11-08 12:00:07,613 INFO Toni Crnjak has latest record on: 2025-11-07
+2025-11-08 12:00:40,642 INFO ✅ Remaining 7 (new: 1) for Emilio Jakubek
+2025-11-08 12:00:46,478 INFO ✅ Remaining 8 (new: 1) for Martijn Ronk
+2025-11-08 12:01:05,616 INFO Script ran successfully! Elapsed time: 63.79s
+2025-11-08 12:01:05,617 INFO SQLite connection closed.
+2025-11-08 12:01:05,618 INFO HTTP session closed.

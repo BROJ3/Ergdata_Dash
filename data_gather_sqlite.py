@@ -3,7 +3,7 @@ import time
 from bs4 import BeautifulSoup
 import sqlite3
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 import config
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
@@ -12,42 +12,47 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Tuple
 import random
 from threading import Semaphore
+from collections import deque
 
-
-# overall configuration
-
-BATCH_SIZE = 20
+# =========================
+# Overall configuration
+# =========================
+BATCH_SIZE = 10
 
 # API paging
 PER_PAGE = 250
 PAGE_SLEEP_SEC = 0.25  # polite delay between result pages
 
+# Stroke fetching throttles
 STROKE_CONCURRENCY = 3
-STROKE_SEM = Semaphore(3)
+STROKE_SEM = Semaphore(STROKE_CONCURRENCY)
 
-JITTER_MIN, JITTER_MAX = 0.05,0.20
+JITTER_MIN, JITTER_MAX = 0.05, 0.20
 
-#season 2024
-#DEFAULT_FROM = "2024-11-01"
-#DEFAULT_TO   = "2025-03-01"
-
-#season 25
+# season 25
 DEFAULT_FROM = "2025-10-21"
 DEFAULT_TO   = "2026-03-01"
 
+# Interleaved work processing
+ROWER_PARALLELISM = 2     # max simultaneous requests per single rower
+GLOBAL_WORKERS     = 16   # total threads
 
-#set up logs
+# =========================
+# Logging
+# =========================
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(message)s"
 )
 log = logging.getLogger("concept2")
 
+# =========================
+# Auth
+# =========================
+access_token = config.access_token
 
-access_token = config.access_token  
-
-#Create a requests.Session with auth and retries
 def make_session() -> requests.Session:
+    """Create a requests.Session with auth, keep-alive pooling, and retries."""
     s = requests.Session()
     s.headers.update({'Authorization': f'Bearer {access_token}'})
     retry = Retry(
@@ -60,106 +65,17 @@ def make_session() -> requests.Session:
     s.mount("https://", HTTPAdapter(max_retries=retry))
     return s
 
-# global session for main thread use
+# Global session for main thread light calls
 session = make_session()
 
-#  Login to Concept2 and scrape the team roster table
-def login_and_get_rowers(session) -> dict:
-
-    login_url = "https://log.concept2.com/login"
-    partners_url = "https://log.concept2.com/team/" + config.my_team
-    resp = session.post(login_url, data=config.login_payload, allow_redirects=True)
-
-    if not resp.ok:
-        log.error("Login failed. status=%s", resp.status_code)
-        return {}
-
-    log.info("Login successful.")
-    log.info("Active rowers this season:")
-
-    resp = session.get(partners_url)
-    soup = BeautifulSoup(resp.text, "html.parser")
-    table = soup.find("table", class_="table js-tablesort")
-
-    if not table or not table.tbody:
-        log.error("Could not find team table on page.")
-        return {}
-    
-    #get all rowers from table
-    rowers = {}
-    for tr in table.tbody.find_all("tr"):
-        name_cell = tr.find("td")
-        if not name_cell:
-            continue
-        a = name_cell.find("a", href=True)
-        if not a or "profile" not in a["href"]:
-            continue
-        partner_id = a["href"].split("/")[-1]
-        name = a.get_text(strip=True)
-
-        # Key by partner_id to avoid collisions on same-name rowers
-        rowers[partner_id] = {"partner_id": partner_id, "name": name}
-    return rowers
-
-
-
-def build_date_range(latest_date: str | None) -> tuple[str, str]:
-    # Keep your current hardcoded windows, but centralized.
-    return (DEFAULT_FROM, DEFAULT_TO)
-
-def maybe_fetch_strokes(session, rower_id: str, training_id: str, stroke_data_flag: bool) -> str | None:
-    if not stroke_data_flag:
-        return None
-    single_url = f"https://log.concept2.com/api/users/{rower_id}/results/{training_id}/strokes"
-
-    with STROKE_SEM:
-        time.sleep(0.2+random.uniform(JITTER_MIN, JITTER_MAX))  # respect rate limits
-    
-    
-        single = fetch_data(single_url, sess=session)
-        return json.dumps(single) if single else None
-
-
-
-def build_workout_tuple(rower_id: str, name: str, w: dict, stroke_json: str | None) -> tuple:
-    date_str = w.get("date", "1970-01-01 00:00:00")
-    parts = date_str.split(" ")
-    date_only = parts[0] if len(parts) > 0 else "1970-01-01"
-    time_only = parts[1] if len(parts) > 1 else "00:00:00"
-
-    date_obj = datetime.strptime(date_only, "%Y-%m-%d")
-    day_of_week = date_obj.strftime("%A")
-
-    time_text = w.get("time", "00:00:00")
-
-    try:
-        h, m, s = map(int, time_text.split(":"))
-        time_seconds = h * 3600 + m * 60 + s
-    except Exception:
-        time_seconds = 0 
-    return (
-        rower_id,
-        w.get("id"),
-        name,
-        w.get("type"),
-        w.get("distance", 0),
-        date_only,
-        day_of_week,
-        time_only,
-        time_seconds,             
-        w.get("timezone", "UTC"),
-        w.get("date_utc"),
-        w.get("heart_rate", {}).get("average", 0),
-        w.get("calories_total", 0),
-        stroke_json,
-    )
-
-
-# Connect to SQLite database
+# =========================
+# DB setup
+# =========================
 def setup_db(conn: sqlite3.Connection) -> sqlite3.Cursor:
     cur = conn.cursor()
     cur.execute('PRAGMA foreign_keys = ON')
 
+    # Note: using MySQL-like DDL is tolerated by SQLite but AUTOINCREMENT is the canonical keyword.
     cur.execute('''
     CREATE TABLE IF NOT EXISTS crnjakt_rowers (
         id         INT AUTO_INCREMENT PRIMARY KEY,
@@ -194,24 +110,21 @@ def setup_db(conn: sqlite3.Connection) -> sqlite3.Cursor:
     cur.execute("CREATE INDEX IF NOT EXISTS idx_rowers_partner_id ON crnjakt_rowers(partner_id)")
     return cur
 
-#use upsert
 def insert_rower(conn, cursor, rower):
-
     sql = '''
     INSERT INTO crnjakt_rowers (partner_id, name)
     VALUES (?, ?)
     ON CONFLICT(partner_id) DO UPDATE SET
         name = excluded.name
     '''
-    
     with conn:
         cursor.execute(sql, (rower['partner_id'], rower['name']))
 
-
-def insert_workout(conn, cursor, workouts):
-  
-    if not workouts:
+def insert_workouts_chunked(conn, cursor, rows: list[tuple], chunk: int = 500) -> int:
+    """Chunked executemany insert that matches the schema/tuple order exactly."""
+    if not rows:
         return 0
+    total = 0
     sql = '''
     INSERT INTO crnjakt_workouts (
         rower_id, workout_id, name, type, distance, date, weekday, hour,
@@ -220,24 +133,56 @@ def insert_workout(conn, cursor, workouts):
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(workout_id) DO NOTHING
     '''
-    # track how many were inserted
-    before = conn.total_changes
-    with conn:  
-        cursor.executemany(sql, workouts)
-    return conn.total_changes - before
+    for i in range(0, len(rows), chunk):
+        batch = rows[i:i+chunk]
+        with conn:
+            cursor.executemany(sql, batch)
+        total += len(batch)
+    return total
 
+def get_latest_workout_date(cursor, partner_id: str):
+    cursor.execute("SELECT MAX(date) FROM crnjakt_workouts WHERE rower_id = ?", (partner_id,))
+    row = cursor.fetchone()
+    return row[0] if row else None
 
-def get_latest_workout_date(cursor, partner_id):
-    sql = "SELECT MAX(date) as latest_date FROM crnjakt_workouts WHERE rower_id = ?"
-    cursor.execute(sql, (partner_id,))
-    result = cursor.fetchone()
-    return result[0]
+def get_existing_workout_ids(cursor, partner_id: str) -> set[str]:
+    cursor.execute("SELECT workout_id FROM crnjakt_workouts WHERE rower_id = ?", (partner_id,))
+    return {r[0] for r in cursor.fetchall()}
 
+# =========================
+# Web / scraping
+# =========================
+def login_and_get_rowers(session) -> dict:
+    login_url = "https://log.concept2.com/login"
+    partners_url = "https://log.concept2.com/team/" + config.my_team
+    resp = session.post(login_url, data=config.login_payload, allow_redirects=True)
+    if not resp.ok:
+        log.error("Login failed. status=%s", resp.status_code)
+        return {}
 
-access_token = config.access_token 
+    log.info("Login successful.")
+    resp = session.get(partners_url)
+    soup = BeautifulSoup(resp.text, "html.parser")
+    table = soup.find("table", class_="table js-tablesort")
+    if not table or not table.tbody:
+        log.error("Could not find team table on page.")
+        return {}
+
+    rowers = {}
+    for tr in table.tbody.find_all("tr"):
+        name_cell = tr.find("td")
+        if not name_cell:
+            continue
+        a = name_cell.find("a", href=True)
+        if not a or "profile" not in a["href"]:
+            continue
+        partner_id = a["href"].split("/")[-1]
+        name = a.get_text(strip=True)
+        rowers[partner_id] = {"partner_id": partner_id, "name": name}
+    log.info("Active rowers this season: %d", len(rowers))
+    return rowers
 
 def fetch_data(api_endpoint: str, sess: requests.Session | None = None):
-
     s = sess or session
     try:
         r = s.get(api_endpoint, timeout=(5, 30))  # (connect, read)
@@ -248,13 +193,11 @@ def fetch_data(api_endpoint: str, sess: requests.Session | None = None):
         log.exception("HTTP error on %s", api_endpoint)
     return None
 
-#fetch all workouts
 def fetch_all_results_paginated(session: requests.Session, rower_id: str, date_from: str, date_to: str) -> list[dict]:
-
     base = (f"https://log.concept2.com/api/users/{rower_id}/results"
             f"?from={date_from}&to={date_to}&number={PER_PAGE}")
-    
-    all_results:list[dict] = []
+
+    all_results: list[dict] = []
     page = 1
     next_url = f"{base}&page={page}"
 
@@ -272,7 +215,6 @@ def fetch_all_results_paginated(session: requests.Session, rower_id: str, date_f
         links = meta.get("links") or {}
         next_link = links.get("next")
 
-        #iterating through the pages if result is too large
         if next_link:
             next_url = next_link
             page = current + 1
@@ -286,105 +228,190 @@ def fetch_all_results_paginated(session: requests.Session, rower_id: str, date_f
         if next_url:
             time.sleep(PAGE_SLEEP_SEC + random.uniform(JITTER_MIN, JITTER_MAX))
 
-
     return all_results
 
+# =========================
+# Helper transforms
+# =========================
+def build_date_range(latest_date: str | None) -> tuple[str, str]:
+    """
+    Start the next fetch the day after the latest saved date for that rower,
+    clamped to DEFAULT_FROM..DEFAULT_TO.
+    """
+    if latest_date:
+        try:
+            start = (datetime.fromisoformat(str(latest_date)) + timedelta(days=1)).date().isoformat()
+        except Exception:
+            start = DEFAULT_FROM
+        start = max(start, DEFAULT_FROM)
+    else:
+        start = DEFAULT_FROM
+    return (start, DEFAULT_TO)
 
-#fetch distinct workouts with strokes
-def fetch_and_build_for_rower(rower: dict, date_from: str, date_to: str) -> List[Tuple]:
+def maybe_fetch_strokes(sess: requests.Session, rower_id: str, training_id: str, stroke_data_flag: bool) -> str | None:
+    if not stroke_data_flag:
+        return None
+    url = f"https://log.concept2.com/api/users/{rower_id}/results/{training_id}/strokes"
+    with STROKE_SEM:
+        time.sleep(0.2 + random.uniform(JITTER_MIN, JITTER_MAX))  # respect rate limits
+        single = fetch_data(url, sess=sess)
+        return json.dumps(single) if single else None
 
-    workout_rows: List[Tuple] = []
-    worker_session = make_session()
+def build_workout_tuple(rower_id: str, name: str, w: dict, stroke_json: str | None) -> tuple:
+    date_str = w.get("date", "1970-01-01 00:00:00")
+    parts = date_str.split(" ")
+    date_only = parts[0] if len(parts) > 0 else "1970-01-01"
+    time_only = parts[1] if len(parts) > 1 else "00:00:00"
 
+    # weekday
     try:
-        rid = rower["partner_id"]
-        all_results = fetch_all_results_paginated(worker_session, rid, date_from, date_to)
-
-        if not all_results:
-            return workout_rows
-
-        for w in all_results:
-
-
-            tid = w.get("id")
-            if not tid or "distance" not in w:
-                continue
-                
-
-            stroke_json = maybe_fetch_strokes(worker_session, rid, tid, w.get("stroke_data", False))
-            workout_rows.append(build_workout_tuple(rid, rower["name"], w, stroke_json))
-        return workout_rows
+        day_of_week = datetime.strptime(date_only, "%Y-%m-%d").strftime("%A")
     except Exception:
-        log.exception("Worker failed for %s", rower.get("name"))
-        return workout_rows
+        day_of_week = "Unknown"
+
+    # duration to seconds
+    time_text = w.get("time", "00:00:00")
+    try:
+        h, m, s = map(int, time_text.split(":"))
+        time_seconds = h * 3600 + m * 60 + s
+    except Exception:
+        time_seconds = 0
+
+    return (
+        rower_id,
+        w.get("id"),
+        name,
+        w.get("type"),
+        w.get("distance", 0),
+        date_only,
+        day_of_week,
+        time_only,
+        time_seconds,
+        w.get("timezone", "UTC"),
+        w.get("date_utc"),
+        (w.get("heart_rate") or {}).get("average", 0),
+        w.get("calories_total", 0),
+        stroke_json,
+    )
+
+# =========================
+# Interleaved work planning
+# =========================
+def round_robin_interleave(dict_of_lists: dict) -> list[dict]:
+    """
+    dict_of_lists: {rower_id: [workout_dict, ...]}
+    returns a single list interleaving: r1w1, r2w1, r3w1, r1w2, r2w2, ...
+    """
+    queues = {k: deque(v) for k, v in dict_of_lists.items() if v}
+    result: list[dict] = []
+    while queues:
+        for rid in list(queues.keys()):
+            q = queues[rid]
+            if q:
+                result.append(q.popleft())
+            if not q:
+                queues.pop(rid, None)
+    return result
+
+def list_new_workouts_for_rower(sess: requests.Session, rower: dict, date_from: str, date_to: str, existing_ids: set[str]) -> list[dict]:
+    # enumerate list (cheap); no stroke fetch here
+    items = fetch_all_results_paginated(sess, rower["partner_id"], date_from, date_to) or []
+    fresh = [w for w in items if w.get("id") and w["id"] not in existing_ids and "distance" in w]
+    for w in fresh:
+        w["_rower_id"] = rower["partner_id"]
+        w["_rower_name"] = rower["name"]
+    return fresh
+
+def plan_global_worklist(sess: requests.Session, rowers: dict, cursor) -> list[dict]:
+    per_rower_lists: dict[str, list[dict]] = {}
+    for _, rower in rowers.items():
+        latest_date = get_latest_workout_date(cursor, rower["partner_id"])
+        date_from, date_to = build_date_range(latest_date)
+        existing_ids = get_existing_workout_ids(cursor, rower["partner_id"])
+        per_rower_lists[rower["partner_id"]] = list_new_workouts_for_rower(sess, rower, date_from, date_to, existing_ids)
+    global_worklist = round_robin_interleave(per_rower_lists)
+    return global_worklist
+
+def build_rower_semaphores(rowers: dict) -> dict[str, Semaphore]:
+    return {r["partner_id"]: Semaphore(ROWER_PARALLELISM) for _, r in rowers.items()}
+
+def fetch_one_workout(session_factory, rower_sems: dict[str, Semaphore], workout_dict: dict) -> tuple | None:
+    # one session per thread (good keep-alive reuse)
+    sess = session_factory()
+    rid = workout_dict["_rower_id"]
+    sem = rower_sems[rid]
+    try:
+        with sem:
+            stroke_json = maybe_fetch_strokes(sess, rid, workout_dict["id"], workout_dict.get("stroke_data", False))
+        return build_workout_tuple(rid, workout_dict["_rower_name"], workout_dict, stroke_json)
     finally:
         try:
-            worker_session.close()
+            sess.close()
         except Exception:
-            log.exception("Error closing worker session")
+            pass
 
+def process_global_worklist(global_worklist: list[dict], rowers: dict) -> list[tuple]:
+    rower_sems = build_rower_semaphores(rowers)
+
+    def session_factory():
+        s = make_session()
+        adapter = HTTPAdapter(pool_connections=100, pool_maxsize=100, max_retries=Retry(total=3, backoff_factor=0.3))
+        s.mount("https://", adapter)
+        s.mount("http://", adapter)
+        return s
+
+    results: list[tuple] = []
+    with ThreadPoolExecutor(max_workers=GLOBAL_WORKERS) as ex:
+        futs = [ex.submit(fetch_one_workout, session_factory, rower_sems, w) for w in global_worklist]
+        for fut in as_completed(futs):
+            try:
+                tup = fut.result()
+                if tup:
+                    results.append(tup)
+            except Exception as e:
+                log.exception("workout fetch failed: %s", e)
+    return results
+
+# =========================
+# Main
+# =========================
 connection = sqlite3.connect('team_data.db')
 cursor = setup_db(connection)
 
 def main():
-
     start_time = time.time()
     try:
         # 1) Login + get rowers
-        rowers = login_and_get_rowers(session)  
+        rowers = login_and_get_rowers(session)
         if not rowers:
             raise SystemExit("No rowers found; aborting.")
 
-        # Upsert rowers 
+        # Upsert rowers
         for _, rower in rowers.items():
             insert_rower(connection, cursor, rower)
 
-        date_from, date_to = build_date_range(None)  
+        # 2) PLAN (enumerate only new workouts per rower, no strokes)
+        global_worklist = plan_global_worklist(session, rowers, cursor)
+        log.info("Planned %d new workouts (interleaved across %d rowers).", len(global_worklist), len(rowers))
+        if not global_worklist:
+            log.info("No new workouts to fetch. Done.")
+            return
 
-        MAX_WORKERS = 8 # tune 4–8 
+        # 3) EXECUTE (fetch strokes interleaved across rowers)
+        tuples = process_global_worklist(global_worklist, rowers)
+        log.info("Fetched %d workouts (with/without strokes).", len(tuples))
 
-        futures = {}
-        
-        with ThreadPoolExecutor(max_workers=MAX_WORKERS) as ex:
-            for _, rower in rowers.items():
-
-                latest_date = get_latest_workout_date(cursor, rower["partner_id"])
-                if latest_date != None:
-                    log.info("%s has latest record on: %s", rower["name"], latest_date)
-                futures[ex.submit(fetch_and_build_for_rower, rower, date_from, date_to)] = rower
-
-            for fut in as_completed(futures):
-                rower = futures[fut]
-                name = rower["name"]
-                try:
-                    rows = fut.result()  
-                except Exception:
-                    log.exception("Worker future failed for %s", name)
-                    continue
-
-                if not rows:
-                    continue
-
-                batch = []
-                for t in rows:
-                    batch.append(t)
-                    if len(batch) >= BATCH_SIZE:
-                        inserted = insert_workout(connection, cursor, batch)
-                        if inserted > 0:
-                            log.info(inserted)
-                            log.info("✅ Batch %s (new: %s) for %s", len(batch), inserted, name)
-                        batch.clear()
-
-                if batch:
-                    inserted = insert_workout(connection, cursor, batch)
-                    if inserted > 0:
-                        log.info("✅ Remaining %s (new: %s) for %s", len(batch), inserted, name)
+        # 4) INSERT (chunked)
+        inserted = insert_workouts_chunked(connection, cursor, tuples, chunk=500)
+        if inserted > 0:
+            log.info("✅ Inserted %d workouts.", inserted)
+        else:
+            log.info("No new rows inserted (all duplicates).")
 
         elapsed = time.time() - start_time
         log.info("Script ran successfully! Elapsed time: %.2fs", elapsed)
 
     finally:
-
         try:
             connection.close()
             log.info("SQLite connection closed.")
@@ -396,7 +423,6 @@ def main():
             log.info("HTTP session closed.")
         except Exception:
             log.exception("Error while closing HTTP session")
-
 
 if __name__ == "__main__":
     main()
