@@ -43,11 +43,6 @@ df["distance"] = df["distance"].astype(float)
 df["hour"]=pd.to_datetime(df["hour"], format = "%H:%M:%S").dt.hour
 df["time"] = df["time"].astype(int)
 
-# Peek at one workout that has stroke_data
-sample = df.loc[df["stroke_data"].notna(), "stroke_data"].iloc[0]
-sample = sample if isinstance(sample, dict) else json.loads(sample)
-
-
 
 #parse the json if workour has stroke data
 def parse_json_maybe(js):
@@ -129,15 +124,7 @@ app.layout = html.Div(
         html.H4("Data Winter 25/26", className="dashboard-header"),
 
 
-                html.Div(
-        style={"margin":"8px 0 16px 0"},
-        children=dcc.Checklist(
-            id="include-coaches",
-            options=[{"label": "Include coaches", "value": "yes"}],
-            value=[],  # empty -> coaches excluded by default
-            inputStyle={"marginRight":"6px"}
-                )
-            ),
+
 
 
         html.Div(
@@ -175,7 +162,16 @@ app.layout = html.Div(
             id="clear-filters",
             n_clicks=0,
             style={"height": "38px"}
-        )
+        ),
+                        html.Div(
+                style={"margin":"8px 0 16px 0"},
+                children=dcc.Checklist(
+                    id="include-coaches",
+                    options=[{"label": "Include coaches", "value": "yes"}],
+                    value=[],  # empty -> coaches excluded by default
+                    inputStyle={"marginRight":"6px"}
+                        )
+            )
     ]
 ),
 
@@ -499,7 +495,6 @@ def update_workout_graph(selected_workout, which_interval):
     if which_interval is None or not (0 <= which_interval < nseg):
         which_interval = 0
 
-    # ---------- interval slice (this was missing -> NameError) ----------
     # ---------- interval slice ----------
     a, b = boundaries[which_interval], boundaries[which_interval + 1]
 
@@ -530,24 +525,59 @@ def update_workout_graph(selected_workout, which_interval):
         p_seg  = p_seg[:last_active + 1]
         hr_seg = hr_seg[:last_active + 1]
         spm_seg= spm_seg[:last_active + 1]
+        if d_seg is not None:
+            d_seg = d_seg[:last_active + 1]   
 
-    # ---------- x axis in seconds (starts at 0) ----------
-    x_sec = np.maximum(t_seg - (t_seg[0] if np.isfinite(t_seg[0]) else 0.0), 0)
+        # ---------- x axis in meters (distance) ----------
+        # Pull raw distance; Concept2 often sends 'd' in decimeters (dm)
+        d = np.array([pt.get("d", np.nan) for pt in strokes], dtype=float)
+        d_seg = d[a:b] if len(d) == len(t) else None
 
-    # choose a sensible tick step
-    total = float(x_sec[-1]) if len(x_sec) else 0.0
-    if total >= 3600:      step = 600   # 10 min
-    elif total >= 1800:    step = 300   # 5  min
-    elif total >= 900:     step = 120   # 2  min
-    elif total >= 300:     step = 60    # 1  min
-    else:                  step = 30    # 30 s
+        if d_seg is not None and np.isfinite(d_seg).any():
+            # 1) Trim to last active stroke (already done above); d_seg now matches t_seg/p_seg slices
 
-    xtickvals = list(np.arange(0, total + 1e-6, step))
-    def fmt_mmss(s): 
-        m = int(s // 60); sec = int(s % 60)
-        return f"{m:02d}:{sec:02d}"
-    xticktext   = [fmt_mmss(v) for v in xtickvals]
-    time_labels = [fmt_mmss(v) for v in x_sec]  # for hover
+            # 2) Detect units by speed and/or span
+            dt = np.diff(t_seg)
+            dd = np.diff(d_seg)
+            valid = (dt > 0) & np.isfinite(dt) & np.isfinite(dd)
+
+            d_m = d_seg.copy()
+            if valid.any():
+                med_v = np.median(dd[valid] / dt[valid])  # "distance per second" in whatever units d uses
+                # Typical rowing speed ≈ 3–6 m/s. If med_v is ~10× that, distance is in decimeters.
+                if med_v > 25:          # very rare: centimeters → /100
+                    d_m = d_seg / 100.0
+                elif med_v > 8:         # common: decimeters → /10
+                    d_m = d_seg / 10.0
+            else:
+                # Fallback by span
+                span = float(d_seg[-1] - d_seg[0])
+                if span > 500000:       # >500 km ⇒ centimeters
+                    d_m = d_seg / 100.0
+                elif span > 50000:      # >50 km  ⇒ decimeters
+                    d_m = d_seg / 10.0
+
+            # Make the interval start at 0 m
+            x_dist = d_m - d_m[0]
+            dist_labels = [f"{v:.0f} m" for v in x_dist]
+        else:
+            # No distance in stream → fall back to stroke index
+            x_dist = np.arange(len(p_seg))
+            dist_labels = [f"{int(v)}" for v in x_dist]
+
+        # convert decimeters → meters
+        d_m = d_seg / 10.0
+        x_dist = d_m - d_m[0]
+        dist_labels = [f"{v:.0f} m" for v in x_dist]
+
+        # tick setup (keep this)
+        total = x_dist[-1] if len(x_dist) else 0
+        step = 250  # or whatever tick spacing you prefer
+        xtickvals = list(np.arange(0, total + step, step))
+        xticktext = [f"{int(v)}" for v in xtickvals]  # label in meters
+
+
+
 
 
     # ---------- figure ----------
@@ -555,18 +585,23 @@ def update_workout_graph(selected_workout, which_interval):
     pace_labels = [f"{int(v)//600}:{((int(v)%600)//10):02d}.{int(v)%10}" for v in p_seg]
 
     fig.add_trace(go.Scatter(
-        x=x_sec, y=p_seg, name="Pace/500m", mode="lines",
-        customdata=np.column_stack([time_labels, pace_labels]),
-        hovertemplate="Time=%{customdata[0]}<br>Pace=%{customdata[1]}<extra></extra>"
+    x=x_dist, y=p_seg, name="Pace/500m", mode="lines",
+    customdata=np.column_stack([dist_labels, pace_labels]),
+    hovertemplate="Distance=%{customdata[0]}<br>Pace=%{customdata[1]}<extra></extra>"
     ))
     fig.add_trace(go.Scatter(
-        x=x_sec, y=hr_seg, name="Heart Rate (bpm)", mode="lines", yaxis="y2",
-        customdata=time_labels, hovertemplate="Time=%{customdata}<br>HR=%{y:.0f} bpm<extra></extra>"
+        x=x_dist, y=hr_seg, name="Heart Rate (bpm)", mode="lines", yaxis="y2",
+        customdata=dist_labels,
+        hovertemplate="Distance=%{customdata}<br>HR=%{y:.0f} bpm<extra></extra>"
     ))
     fig.add_trace(go.Scatter(
-        x=x_sec, y=spm_seg, name="SPM", mode="lines", yaxis="y3",
-        customdata=time_labels, hovertemplate="Time=%{customdata}<br>SPM=%{y:.0f}<extra></extra>"
+        x=x_dist, y=spm_seg, name="SPM", mode="lines", yaxis="y3",
+        customdata=dist_labels,
+        hovertemplate="Distance=%{customdata}<br>SPM=%{y:.0f}<extra></extra>"
     ))
+
+    fig.update_traces(line=dict(width=0.8))
+
 
 
     # Pace ticks (deci-sec → mm:ss)
@@ -577,11 +612,12 @@ def update_workout_graph(selected_workout, which_interval):
         title=f"Workout: Pace, HR, and SPM — Interval {which_interval+1}/{nseg}",
         # x-axis: linear seconds with custom mm:ss ticks
         xaxis=dict(
-            title="Elapsed Time",
-            tickmode="array",
-            tickvals=xtickvals,
-            ticktext=xticktext
-        ),
+        title="Distance (m)",
+        tickmode="array",
+        tickvals=xtickvals,
+        ticktext=xticktext
+    ),
+
         # left y (pace)
         yaxis=dict(
             title="Pace (mm:ss / 500m)",
