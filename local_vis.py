@@ -7,6 +7,8 @@ from datetime import datetime
 import json
 import pandas as pd
 import numpy as np
+import plotly.graph_objects as go
+
 
 COACHES = {"Toni Crnjak", "Boris Jukic", "Martijn Ronk"}
 
@@ -40,6 +42,11 @@ df = pd.read_sql_query(
 df["distance"] = df["distance"].astype(float)
 df["hour"]=pd.to_datetime(df["hour"], format = "%H:%M:%S").dt.hour
 df["time"] = df["time"].astype(int)
+
+# Peek at one workout that has stroke_data
+sample = df.loc[df["stroke_data"].notna(), "stroke_data"].iloc[0]
+sample = sample if isinstance(sample, dict) else json.loads(sample)
+
 
 
 #parse the json if workour has stroke data
@@ -212,21 +219,11 @@ app.layout = html.Div(
                         dcc.Dropdown(id='workout-dropdown'),
                     ]
                 ),
-                html.Div(
-                    className="dropdown",
-                    children=[
-                        html.Label("Select Metric:"),
-                        dcc.Dropdown(
-                            id='metric-dropdown',
-                            options=[
-                                {'label': 'Pace/500m', 'value': 'p'},
-                                {'label': 'Heart Rate', 'value': 'hr'},
-                                {'label': 'Strokes Per Minute', 'value': 'spm'}
-                            ],
-                            value='p'
-                        )
-                    ]
-                )
+                
+            html.Div(className="dropdown", children=[
+                html.Label("Select Interval:"),
+                dcc.Dropdown(id="interval-dropdown", placeholder="Interval 1", clearable=False)
+            ])
             ]
         ),
 
@@ -327,15 +324,41 @@ def update_workout_dropdown(selected_rower):
     return sub[["label", "value"]].to_dict("records"), default_value
 
 
+
+
+
+@app.callback(
+    Output("interval-dropdown", "options"),
+    Output("interval-dropdown", "value"),
+    Input("workout-dropdown", "value"),
+)
+def _update_interval_dropdown(selected_workout):
+    if not selected_workout:
+        return [], None
+
+    sd = json.loads(selected_workout)
+    if isinstance(sd, str):
+        sd = json.loads(sd)
+    strokes = sd.get("data", [])
+
+    t = np.array([pt.get("t", np.nan) for pt in strokes], dtype=float)
+    # breaks where time resets (drop bigger than ~3s)
+    resets = np.where(np.diff(t) < -3.0)[0] + 1
+    nseg = int(len(resets) + 1)
+
+    opts = [{"label": f"Interval {i+1}", "value": i} for i in range(nseg)]
+    default_val = 0 if nseg > 0 else None
+    return opts, default_val
+
 @app.callback(
     Output('cumulative-distance-graph', 'figure'),
     Output('time-of-day-pie-chart', 'figure'),
     Output('weekday-bar-chart', 'figure'),
     Output('leaderboard-table', 'children'),
     Input('filters', 'data'),
-    Input('include-coaches', 'value')   
-
+    Input('include-coaches', 'value')
 )
+
 
 def _update_top_section(flt, include_coaches):
 
@@ -383,31 +406,50 @@ def _update_top_section(flt, include_coaches):
 
     # 4) bar by weekday
     weekday_order = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
-
     sub["weekday"] = pd.Categorical(sub["weekday"], categories=weekday_order, ordered=True)
     wday_tbl = (sub.groupby("weekday", as_index=False, observed=False)["distance"]
-                  .sum().sort_values("weekday"))
-    fig_wday = px.bar(wday_tbl, x="weekday", y="distance",
-                      title="Distance by Weekday",
-                      labels={'weekday': 'Weekday', 'distance': 'Distance'})
+                .sum().sort_values("weekday"))
 
-        # 5) leaderboard (now computed from sub_lb)
+    fig_wday = px.bar(
+        wday_tbl, x="weekday", y="distance",
+        title="Distance by Weekday",
+        labels={'weekday': 'Weekday', 'distance': 'Distance'}
+    )
+
+    # add headroom so bars don’t “kiss” the top (esp. when coaches included)
+    ymax = float(wday_tbl["distance"].max()) if not wday_tbl.empty else 0.0
+    padding = 1.15  # 15% headroom
+    fig_wday.update_yaxes(range=[0, ymax * padding], tickformat=",")
+
+    ymax_cum = float(cum["cumulative_distance"].max()) if not cum.empty else 0.0
+    fig_cum.update_yaxes(range=[0, ymax_cum * 1.05], tickformat=",")
+    fig_cum.update_layout(legend=dict(orientation="v", x=1.02, y=1))
+    fig_cum.update_yaxes(tickformat=",")
+    fig_wday.update_yaxes(tickformat=",")
+
+
+
+
+    # 5) leaderboard (now computed from sub_lb)
     START = pd.Timestamp("2025-10-21")
     sub_lb["week_num"] = ((sub_lb["date"] - START).dt.days // 7) + 1
 
+    # team weekly totals
     weekly_totals = sub_lb.groupby("week_num", as_index=False)["distance"].sum()
 
-    if not sub_lb.empty:
-        # winner among filtered set
-        idx = sub_lb.groupby("week_num")["distance"].idxmax()
-        weekly_winner = (
-            sub_lb.loc[idx, ["week_num", "name"]]
-                  .rename(columns={"name": "most_rowed"})
-        )
-        leaderboard = weekly_totals.merge(weekly_winner, on="week_num", how="left")
-    else:
-        # no rows after filtering
-        leaderboard = pd.DataFrame(columns=["week_num", "distance", "most_rowed"])
+    # **per-rower weekly totals**, then pick the top rower each week
+    weekly_by_rower = (
+        sub_lb.groupby(["week_num", "name"], as_index=False)["distance"].sum()
+    )
+
+    idx = weekly_by_rower.groupby("week_num")["distance"].idxmax()
+    weekly_winner = (
+        weekly_by_rower.loc[idx, ["week_num", "name"]]
+                    .rename(columns={"name": "most_rowed"})
+    )
+
+    leaderboard = weekly_totals.merge(weekly_winner, on="week_num", how="left")
+
 
     table = html.Table(
         children=[
@@ -428,64 +470,166 @@ def _update_top_section(flt, include_coaches):
 
 
     return fig_cum, fig_tod, fig_wday, table
-
-
-
-
 @app.callback(
     Output('workout-stroke-graph', 'figure'),
-    [Input('workout-dropdown', 'value'),
-     Input('metric-dropdown', 'value')]
+    Input('workout-dropdown', 'value'),
+    Input('interval-dropdown', 'value'),
 )
-def update_workout_graph(selected_workout, selected_metric):
+def update_workout_graph(selected_workout, which_interval):
     if not selected_workout:
-        return px.line(title="No Data Available")
+        return go.Figure(layout_title_text="No Data Available")
 
-    stroke_data = json.loads(selected_workout)
-    strokes = stroke_data['data']
+    sd = json.loads(selected_workout)
+    if isinstance(sd, str):
+        sd = json.loads(sd)
+    strokes = (sd or {}).get("data", [])
 
-    metric_labels = {
-        'p': 'Pace',
-        'hr': 'Heart Rate',
-        'spm': 'Strokes per Minute'
-    }
+    # series (full workout)
+    p   = np.array([pt.get("p",   0) for pt in strokes], dtype=float)   # pace (deci-sec/500m)
+    hr  = np.array([pt.get("hr",  0) for pt in strokes], dtype=float)   # bpm
+    spm = np.array([pt.get("spm", 0) for pt in strokes], dtype=float)   # strokes/min
+    t   = np.array([pt.get("t", np.nan) for pt in strokes], dtype=float)  # elapsed sec (resets by piece)
 
-    stroke_x = list(range(len(strokes)))
-    stroke_y = [point.get(selected_metric, 0) for point in strokes]
+    # interval boundaries where t drops
+    resets = np.where(np.diff(t) < -3.0)[0] + 1
+    boundaries = np.r_[0, resets, len(t)]
+    nseg = len(boundaries) - 1
 
-    fig = px.line(
-    x=stroke_x,
-    y=stroke_y,
-    title=f"{metric_labels[selected_metric]} for Selected Workout",
-    labels={'x': 'Stroke Number:', 'y': metric_labels[selected_metric]}
-)
+    # default to first interval if none selected
+    if which_interval is None or not (0 <= which_interval < nseg):
+        which_interval = 0
 
-    
-    if selected_metric == 'p':
-        # Build per-point labels
-        pace_labels = [
-            f"{val // 600}:{((val % 600) // 10):02d}.{val % 10}"
-            for val in stroke_y
-        ]
-        fig.update_traces(
-            customdata=pace_labels,
-            hovertemplate="Pace=%{customdata}<extra></extra>"
-        )
+    # ---------- interval slice (this was missing -> NameError) ----------
+    # ---------- interval slice ----------
+    a, b = boundaries[which_interval], boundaries[which_interval + 1]
 
-        # Standardized y-axis for pace
-        tickvals = list(range(540, 2341, 180))  # every 30s
-        ticktext = [f"{v//600}:{(v%600)//10:02d}" for v in tickvals]
-        fig.update_layout(
-            yaxis=dict(
-                tickmode="array",
-                tickvals=tickvals,
-                ticktext=ticktext,
-                autorange="reversed",
-                range=[2340, 540]
-            )
-        )
+    t_seg = t[a:b].copy()
+    p_seg = p[a:b].copy()
+    hr_seg = hr[a:b].copy()
+    spm_seg = spm[a:b].copy()
+
+    # If distance 'd' exists, use it to detect movement too (optional but robust)
+    d = np.array([pt.get("d", np.nan) for pt in strokes], dtype=float)
+    d_seg = d[a:b] if len(d) == len(t) else None
+
+    # ---------- trim trailing rest ----------
+    SPM_ACTIVE = 12  # tweak if needed (10–16 usually works)
+    active_spm = np.isfinite(spm_seg) & (spm_seg >= SPM_ACTIVE)
+
+    if d_seg is not None and np.isfinite(d_seg).all():
+        delta_d = np.r_[0, np.diff(d_seg)]
+        moving = delta_d > 0
+        active_mask = active_spm | moving
+    else:
+        active_mask = active_spm
+
+    if active_mask.any():
+        last_active = np.max(np.nonzero(active_mask)[0])
+        # keep up to and including last active stroke
+        t_seg  = t_seg[:last_active + 1]
+        p_seg  = p_seg[:last_active + 1]
+        hr_seg = hr_seg[:last_active + 1]
+        spm_seg= spm_seg[:last_active + 1]
+
+    # ---------- x axis in seconds (starts at 0) ----------
+    x_sec = np.maximum(t_seg - (t_seg[0] if np.isfinite(t_seg[0]) else 0.0), 0)
+
+    # choose a sensible tick step
+    total = float(x_sec[-1]) if len(x_sec) else 0.0
+    if total >= 3600:      step = 600   # 10 min
+    elif total >= 1800:    step = 300   # 5  min
+    elif total >= 900:     step = 120   # 2  min
+    elif total >= 300:     step = 60    # 1  min
+    else:                  step = 30    # 30 s
+
+    xtickvals = list(np.arange(0, total + 1e-6, step))
+    def fmt_mmss(s): 
+        m = int(s // 60); sec = int(s % 60)
+        return f"{m:02d}:{sec:02d}"
+    xticktext   = [fmt_mmss(v) for v in xtickvals]
+    time_labels = [fmt_mmss(v) for v in x_sec]  # for hover
+
+
+    # ---------- figure ----------
+    fig = go.Figure()
+    pace_labels = [f"{int(v)//600}:{((int(v)%600)//10):02d}.{int(v)%10}" for v in p_seg]
+
+    fig.add_trace(go.Scatter(
+        x=x_sec, y=p_seg, name="Pace/500m", mode="lines",
+        customdata=np.column_stack([time_labels, pace_labels]),
+        hovertemplate="Time=%{customdata[0]}<br>Pace=%{customdata[1]}<extra></extra>"
+    ))
+    fig.add_trace(go.Scatter(
+        x=x_sec, y=hr_seg, name="Heart Rate (bpm)", mode="lines", yaxis="y2",
+        customdata=time_labels, hovertemplate="Time=%{customdata}<br>HR=%{y:.0f} bpm<extra></extra>"
+    ))
+    fig.add_trace(go.Scatter(
+        x=x_sec, y=spm_seg, name="SPM", mode="lines", yaxis="y3",
+        customdata=time_labels, hovertemplate="Time=%{customdata}<br>SPM=%{y:.0f}<extra></extra>"
+    ))
+
+
+    # Pace ticks (deci-sec → mm:ss)
+    tickvals = list(range(540, 2341, 180))  # 1:30 .. 3:54 every 30s
+    ticktext = [f"{v//600}:{(v%600)//10:02d}" for v in tickvals]
+
+    fig.update_layout(
+        title=f"Workout: Pace, HR, and SPM — Interval {which_interval+1}/{nseg}",
+        # x-axis: linear seconds with custom mm:ss ticks
+        xaxis=dict(
+            title="Elapsed Time",
+            tickmode="array",
+            tickvals=xtickvals,
+            ticktext=xticktext
+        ),
+        # left y (pace)
+        yaxis=dict(
+            title="Pace (mm:ss / 500m)",
+            tickmode="array", tickvals=tickvals, ticktext=ticktext,
+            autorange="reversed", range=[max(tickvals), min(tickvals)]
+        ),
+        # right y (HR) – outer
+        yaxis2=dict(
+            title="Heart Rate (bpm)",
+            overlaying="y",
+            side="right",
+            anchor="free",
+            position=1.0,          # right edge
+            showgrid=False,
+            title_standoff=12
+        ),
+        # right y (SPM) – slightly inside, no ticks to avoid overlap
+        yaxis3=dict(
+            title="SPM",
+            overlaying="y",
+            side="right",
+            anchor="free",
+            position=0.96,
+            showgrid=False,
+            showticklabels=False,
+            ticks="",
+            title_standoff=36
+        ),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+        margin=dict(t=60, r=160)
+    )
+
+    # headroom for HR & SPM
+    if np.any(hr > 0):
+        hr_min, hr_max = np.nanmin(hr), np.nanmax(hr)
+        pad = max(3, 0.08 * (hr_max - hr_min if hr_max > hr_min else 10))
+        fig.update_layout(yaxis2=dict(range=[hr_min - pad, hr_max + pad],
+                                      overlaying="y", side="right"))
+    if np.any(spm > 0):
+        spm_min, spm_max = np.nanmin(spm), np.nanmax(spm)
+        pad = max(1, 0.12 * (spm_max - spm_min if spm_max > spm_min else 5))
+        fig.update_layout(yaxis3=dict(range=[spm_min - pad, spm_max + pad],
+                                      overlaying="y", side="right",
+                                      anchor="free", position=0.96))
 
     return fig
+
+
 
 
 if __name__ == '__main__':
