@@ -10,45 +10,35 @@ import numpy as np
 import plotly.graph_objects as go
 
 
-# ---- shared styles for filters ----
-# single-row filter strip
-FILTER_ROW_STYLE = {
-    "display": "grid",
-    # 6 columns: start, end, rowers (wider), show-all, include-coaches, button
-    "gridTemplateColumns": "140px 140px minmax(260px,1fr) auto auto auto",
-    "columnGap": "12px",
-    "alignItems": "end",
-    "marginBottom": "12px",
-    # stay on one row; scroll horizontally on very small screens
-    "overflowX": "auto",
-    "whiteSpace": "nowrap",
-}
-
-FIELD_STYLE = {"display": "flex", "flexDirection": "column", "gap": "6px"}
-LABEL_STYLE = {"fontSize": "12px", "fontWeight": 600, "color": "#666"}
-CHECK_WRAP_STYLE = {"display": "flex", "alignItems": "center", "height": "38px"}
-
 COACHES = {"Toni Crnjak", "Boris Jukic", "Martijn Ronk"}
 
-def apply_filters(df:pd.DataFrame, flt:dict) -> pd.DataFrame:
+def apply_filters(df: pd.DataFrame, flt: dict, *, force_allwinter: bool | None = None) -> pd.DataFrame:
     sub = df
 
-    #date range
+    # ----- date range -----
     if flt.get("date"):
-        # right edge is the picker end (or today if missing)
         end = pd.to_datetime(flt["date"][1]) if flt["date"][1] else pd.Timestamp.today().normalize()
 
-        if flt.get("allwinter"):
-            # checkbox ON → use picker start (your “winter” start)
-            start = pd.to_datetime(flt["date"][0])
+        # if caller forces behavior, use that; otherwise use the stored flag
+        aw = force_allwinter if force_allwinter is not None else flt.get("allwinter", False)
+
+        if aw:
+            start = pd.to_datetime(flt["date"][0])        # picker start (“winter start”)
         else:
-            # default → last 14 days up to `end`
             start = (pd.to_datetime(end) - pd.Timedelta(days=14)).normalize()
 
         sub = sub[(sub["date"] >= start) & (sub["date"] <= end)]
 
+    # ----- rower names -----
+    if flt.get("name"):
+        sub = sub[sub["name"].isin(flt["name"])]
+
+    # ----- include coaches toggle (keep your existing logic if you have one) -----
+    # if not flt.get("include_coaches", False):
+    #     sub = sub[~sub["name"].isin(COACHES)]
 
     return sub.copy()
+
 
 
 #loading into dataframe
@@ -142,73 +132,73 @@ app.layout = html.Div(
         html.H4("Data Winter 25/26", className="dashboard-header"),
 
 
+
+
+
         html.Div(
     className="filter-row",
-    style=FILTER_ROW_STYLE,
+    style={"display": "flex", "gap": "16px", "alignItems": "flex-end", "flexWrap": "wrap"},
     children=[
-        # Start date (compact)
-        html.Div(style=FIELD_STYLE, children=[
-            html.Label("Start date", style=LABEL_STYLE),
+        html.Div([
+            html.Label("Start date"),
             dcc.DatePickerSingle(
                 id="date-start",
                 date=df["date"].min().date(),
-                display_format="YYYY-MM-DD",
-                style={"width": "140px"}
+                display_format="YYYY-MM-DD"
             )
         ]),
-
-        # End date (compact)
-        html.Div(style=FIELD_STYLE, children=[
-            html.Label("End date", style=LABEL_STYLE),
+        html.Div([
+            html.Label("End date"),
             dcc.DatePickerSingle(
                 id="date-end",
                 date=df["date"].max().date(),
-                display_format="YYYY-MM-DD",
-                style={"width": "140px"}
+                display_format="YYYY-MM-DD"
             )
         ]),
-
-        # Rower multi-select (takes the flexible middle space)
-        html.Div(style={**FIELD_STYLE, "minWidth": "260px"}, children=[
-            html.Label("Filter rowers (multi)", style=LABEL_STYLE),
+        html.Div(style={"minWidth": "280px"}, children=[
+            html.Label("Filter rowers (multi)"),
             dcc.Dropdown(
                 id="global-rower-filter",
                 options=[{"label": n, "value": n} for n in sorted(df["name"].unique())],
                 value=[],  # empty = all rowers
                 multi=True,
-                placeholder="All rowers",
-                style={"minWidth": "260px"}
+                placeholder="All rowers"
             )
         ]),
+        html.Button(
+            "Clear filters",
+            id="clear-filters",
+            n_clicks=0,
+            style={"height": "38px"}
+        ),
+                        html.Div(
+                style={"margin":"8px 0 16px 0"},
 
-        # Show all winter (inline height)
-        html.Div(style=CHECK_WRAP_STYLE, children=[
+
+                
+
+                
+                children=dcc.Checklist(
+                    id="include-coaches",
+                    options=[{"label": "Include coaches", "value": "yes"}],
+                    value=[],  # empty -> coaches excluded by default
+                    inputStyle={"marginRight":"6px"}
+                        ),
+                        
+            ),
+
+            html.Div([
             dcc.Checklist(
                 id="show-all-winter",
                 options=[{"label": "Show all winter", "value": "ALL"}],
                 value=[],
-                inputStyle={"marginRight": "6px"}
+                inputStyle={"marginRight": "6px"},
+                style={"marginTop": "20px"}
             )
         ]),
-
-        # Include coaches (inline height)
-        html.Div(style=CHECK_WRAP_STYLE, children=[
-            dcc.Checklist(
-                id="include-coaches",
-                options=[{"label": "Include coaches", "value": "yes"}],
-                value=[],  # default excluded
-                inputStyle={"marginRight": "6px"}
-            )
-        ]),
-
-        # Clear button (rightmost column)
-        html.Div(style={"display": "flex", "justifyContent": "flex-end"}, children=[
-            html.Button("Clear filters", id="clear-filters", n_clicks=0, style={"height": "38px"})
-        ]),
+            
     ]
-)
-
-,
+),
 
 
         dcc.Graph(id='cumulative-distance-graph', className="graph", animate=True,animation_options={"frame": {"duration": 1200}, "transition": {"duration": 1200}}),
