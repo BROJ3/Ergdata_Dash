@@ -10,6 +10,24 @@ import numpy as np
 import plotly.graph_objects as go
 
 
+# ---- shared styles for filters ----
+# single-row filter strip
+FILTER_ROW_STYLE = {
+    "display": "grid",
+    # 6 columns: start, end, rowers (wider), show-all, include-coaches, button
+    "gridTemplateColumns": "140px 140px minmax(260px,1fr) auto auto auto",
+    "columnGap": "12px",
+    "alignItems": "end",
+    "marginBottom": "12px",
+    # stay on one row; scroll horizontally on very small screens
+    "overflowX": "auto",
+    "whiteSpace": "nowrap",
+}
+
+FIELD_STYLE = {"display": "flex", "flexDirection": "column", "gap": "6px"}
+LABEL_STYLE = {"fontSize": "12px", "fontWeight": 600, "color": "#666"}
+CHECK_WRAP_STYLE = {"display": "flex", "alignItems": "center", "height": "38px"}
+
 COACHES = {"Toni Crnjak", "Boris Jukic", "Martijn Ronk"}
 
 def apply_filters(df:pd.DataFrame, flt:dict) -> pd.DataFrame:
@@ -17,12 +35,18 @@ def apply_filters(df:pd.DataFrame, flt:dict) -> pd.DataFrame:
 
     #date range
     if flt.get("date"):
-        start,end = pd.to_datetime(flt["date"][0]),pd.to_datetime(flt["date"][1])
-        sub = sub[(sub["date"]>= start) & (sub["date"] <= end)]
+        # right edge is the picker end (or today if missing)
+        end = pd.to_datetime(flt["date"][1]) if flt["date"][1] else pd.Timestamp.today().normalize()
 
-    #rowers
-    if flt.get("name"):
-        sub=sub[sub["name"].isin(flt["name"])]
+        if flt.get("allwinter"):
+            # checkbox ON → use picker start (your “winter” start)
+            start = pd.to_datetime(flt["date"][0])
+        else:
+            # default → last 14 days up to `end`
+            start = (pd.to_datetime(end) - pd.Timedelta(days=14)).normalize()
+
+        sub = sub[(sub["date"] >= start) & (sub["date"] <= end)]
+
 
     return sub.copy()
 
@@ -42,6 +66,7 @@ df = pd.read_sql_query(
 df["distance"] = df["distance"].astype(float)
 df["hour"]=pd.to_datetime(df["hour"], format = "%H:%M:%S").dt.hour
 df["time"] = df["time"].astype(int)
+
 
 
 #parse the json if workour has stroke data
@@ -98,13 +123,6 @@ rowers_with_strokes = (
 rower_options = [{'label': r, 'value': r} for r in rowers_with_strokes]
 
 
-
-
-
-
-
-
-
 app.layout = html.Div(
     className="dashboard-container",
     children=[
@@ -124,56 +142,73 @@ app.layout = html.Div(
         html.H4("Data Winter 25/26", className="dashboard-header"),
 
 
-
-
-
         html.Div(
     className="filter-row",
-    style={"display": "flex", "gap": "16px", "alignItems": "flex-end", "flexWrap": "wrap"},
+    style=FILTER_ROW_STYLE,
     children=[
-        html.Div([
-            html.Label("Start date"),
+        # Start date (compact)
+        html.Div(style=FIELD_STYLE, children=[
+            html.Label("Start date", style=LABEL_STYLE),
             dcc.DatePickerSingle(
                 id="date-start",
                 date=df["date"].min().date(),
-                display_format="YYYY-MM-DD"
+                display_format="YYYY-MM-DD",
+                style={"width": "140px"}
             )
         ]),
-        html.Div([
-            html.Label("End date"),
+
+        # End date (compact)
+        html.Div(style=FIELD_STYLE, children=[
+            html.Label("End date", style=LABEL_STYLE),
             dcc.DatePickerSingle(
                 id="date-end",
                 date=df["date"].max().date(),
-                display_format="YYYY-MM-DD"
+                display_format="YYYY-MM-DD",
+                style={"width": "140px"}
             )
         ]),
-        html.Div(style={"minWidth": "280px"}, children=[
-            html.Label("Filter rowers (multi)"),
+
+        # Rower multi-select (takes the flexible middle space)
+        html.Div(style={**FIELD_STYLE, "minWidth": "260px"}, children=[
+            html.Label("Filter rowers (multi)", style=LABEL_STYLE),
             dcc.Dropdown(
                 id="global-rower-filter",
                 options=[{"label": n, "value": n} for n in sorted(df["name"].unique())],
                 value=[],  # empty = all rowers
                 multi=True,
-                placeholder="All rowers"
+                placeholder="All rowers",
+                style={"minWidth": "260px"}
             )
         ]),
-        html.Button(
-            "Clear filters",
-            id="clear-filters",
-            n_clicks=0,
-            style={"height": "38px"}
-        ),
-                        html.Div(
-                style={"margin":"8px 0 16px 0"},
-                children=dcc.Checklist(
-                    id="include-coaches",
-                    options=[{"label": "Include coaches", "value": "yes"}],
-                    value=[],  # empty -> coaches excluded by default
-                    inputStyle={"marginRight":"6px"}
-                        )
+
+        # Show all winter (inline height)
+        html.Div(style=CHECK_WRAP_STYLE, children=[
+            dcc.Checklist(
+                id="show-all-winter",
+                options=[{"label": "Show all winter", "value": "ALL"}],
+                value=[],
+                inputStyle={"marginRight": "6px"}
             )
+        ]),
+
+        # Include coaches (inline height)
+        html.Div(style=CHECK_WRAP_STYLE, children=[
+            dcc.Checklist(
+                id="include-coaches",
+                options=[{"label": "Include coaches", "value": "yes"}],
+                value=[],  # default excluded
+                inputStyle={"marginRight": "6px"}
+            )
+        ]),
+
+        # Clear button (rightmost column)
+        html.Div(style={"display": "flex", "justifyContent": "flex-end"}, children=[
+            html.Button("Clear filters", id="clear-filters", n_clicks=0, style={"height": "38px"})
+        ]),
     ]
-),
+)
+
+,
 
 
         dcc.Graph(id='cumulative-distance-graph', className="graph", animate=True,animation_options={"frame": {"duration": 1200}, "transition": {"duration": 1200}}),
@@ -222,7 +257,6 @@ app.layout = html.Div(
             ])
             ]
         ),
-
         dcc.Graph(id='workout-stroke-graph')
     ]
 )
@@ -233,16 +267,19 @@ app.layout = html.Div(
     Output("filters", "data", allow_duplicate=True),
     Input("date-start", "date"),
     Input("date-end", "date"),
+    Input("show-all-winter", "value"),
     State("filters", "data"),
     prevent_initial_call=True
 )
-def set_date(start,end,flt):
-    flt=dict(flt or {})
-
+def set_date(start, end, allwinter_value, flt):
+    flt = dict(flt or {})
     if not start or not end:
         return no_update
-    flt["date"] = [start,end]
+    flt["date"] = [start, end]
+    # store a simple boolean flag
+    flt["allwinter"] = ("ALL" in (allwinter_value or []))
     return flt
+
 
 
 #when rower select changes -> update filters.name
@@ -335,16 +372,19 @@ def _update_interval_dropdown(selected_workout):
     sd = json.loads(selected_workout)
     if isinstance(sd, str):
         sd = json.loads(sd)
-    strokes = sd.get("data", [])
 
+    meta = sd.get("intervals_meta") or []
+    if meta:
+        opts = [{"label": f"Interval {i+1}", "value": i} for i in range(len(meta))]
+        return opts, (0 if opts else None)
+
+    # fallback to time resets for older rows
+    strokes = sd.get("data", [])
     t = np.array([pt.get("t", np.nan) for pt in strokes], dtype=float)
-    # breaks where time resets (drop bigger than ~3s)
     resets = np.where(np.diff(t) < -3.0)[0] + 1
     nseg = int(len(resets) + 1)
-
     opts = [{"label": f"Interval {i+1}", "value": i} for i in range(nseg)]
-    default_val = 0 if nseg > 0 else None
-    return opts, default_val
+    return opts, (0 if nseg > 0 else None)
 
 @app.callback(
     Output('cumulative-distance-graph', 'figure'),
@@ -466,6 +506,7 @@ def _update_top_section(flt, include_coaches):
 
 
     return fig_cum, fig_tod, fig_wday, table
+
 @app.callback(
     Output('workout-stroke-graph', 'figure'),
     Input('workout-dropdown', 'value'),
@@ -588,12 +629,15 @@ def update_workout_graph(selected_workout, which_interval):
     x=x_dist, y=p_seg, name="Pace/500m", mode="lines",
     customdata=np.column_stack([dist_labels, pace_labels]),
     hovertemplate="Distance=%{customdata[0]}<br>Pace=%{customdata[1]}<extra></extra>"
-    ))
+    )),
+    # Heart rate trace
     fig.add_trace(go.Scatter(
-        x=x_dist, y=hr_seg, name="Heart Rate (bpm)", mode="lines", yaxis="y2",
-        customdata=dist_labels,
-        hovertemplate="Distance=%{customdata}<br>HR=%{y:.0f} bpm<extra></extra>"
-    ))
+        x=x_dist, y=hr_seg,
+        name="Heart Rate (bpm)",
+        mode="lines",
+        yaxis="y2",
+        hovertemplate="Distance=%{x:.0f} m<br>HR=%{y:.0f} bpm<extra></extra>"
+    )),
     fig.add_trace(go.Scatter(
         x=x_dist, y=spm_seg, name="SPM", mode="lines", yaxis="y3",
         customdata=dist_labels,
@@ -630,6 +674,7 @@ def update_workout_graph(selected_workout, which_interval):
             overlaying="y",
             side="right",
             anchor="free",
+            range=[0,220],
             position=1.0,          # right edge
             showgrid=False,
             title_standoff=12

@@ -277,6 +277,27 @@ def build_workout_tuple(rower_id: str, name: str, w: dict, stroke_json: str | No
     except Exception:
         time_seconds = 0
 
+
+    # build a stable stroke blob with optional intervals meta
+    sd_wrapped = None
+    if stroke_json:
+        try:
+            strokes_list = json.loads(stroke_json) or []
+        except Exception:
+            strokes_list = []
+        wk = (w.get("workout") or {})
+        intervals_meta = wk.get("intervals") or wk.get("splits") or []
+        # normalize to a list of dicts we can index by interval
+        if isinstance(intervals_meta, dict):
+            intervals_meta = []
+        sd_wrapped = json.dumps({
+            "data": strokes_list,
+            "intervals_meta": intervals_meta
+        })
+    else:
+        sd_wrapped = None
+
+
     return (
         rower_id,
         w.get("id"),
@@ -291,7 +312,7 @@ def build_workout_tuple(rower_id: str, name: str, w: dict, stroke_json: str | No
         w.get("date_utc"),
         (w.get("heart_rate") or {}).get("average", 0),
         w.get("calories_total", 0),
-        stroke_json,
+        sd_wrapped,
     )
 
 # =========================
