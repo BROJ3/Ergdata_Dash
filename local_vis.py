@@ -252,6 +252,42 @@ app.layout = html.Div(
 )
 
 
+def _strokes_from_sd(sd: dict):
+    """
+    Return a list of stroke dicts from stroke_data payloads shaped as:
+      {"data": [ ... ]}              # old
+      {"data": {"data": [ ... ]}}    # new
+    """
+    if not isinstance(sd, dict):
+        return []
+    slot = sd.get("data", [])
+    if isinstance(slot, dict) and isinstance(slot.get("data"), list):
+        return slot["data"]
+    return slot if isinstance(slot, list) else []
+
+
+
+
+
+def _intervals_meta_from_sd(sd: dict):
+    """
+    Return intervals metadata if present, regardless of wrapper.
+    Accepts:
+      sd["intervals_meta"]
+      sd["data"]["meta"] or sd["data"]["intervals_meta"]
+    """
+    if not isinstance(sd, dict):
+        return []
+    meta = sd.get("intervals_meta")
+    if meta:
+        return meta
+    slot = sd.get("data")
+    if isinstance(slot, dict):
+        return slot.get("intervals_meta") or slot.get("meta") or []
+    return []
+
+
+
 #when date changes, update filters.date
 @app.callback(
     Output("filters", "data", allow_duplicate=True),
@@ -356,25 +392,31 @@ def update_workout_dropdown(selected_rower):
     Input("workout-dropdown", "value"),
 )
 def _update_interval_dropdown(selected_workout):
+
     if not selected_workout:
         return [], None
 
     sd = json.loads(selected_workout)
-    if isinstance(sd, str):
-        sd = json.loads(sd)
 
-    meta = sd.get("intervals_meta") or []
-    if meta:
-        opts = [{"label": f"Interval {i+1}", "value": i} for i in range(len(meta))]
-        return opts, (0 if opts else None)
+    # Only trust explicit metadata; never infer.
+    meta = _intervals_meta_from_sd(sd)
+    n = len(meta) if isinstance(meta, list) else 0
 
-    # fallback to time resets for older rows
-    strokes = sd.get("data", [])
+    if n >= 2:
+        opts = [{"label": f"Interval {i+1}", "value": i} for i in range(n)]
+        return opts, 0
+
+    # No valid metadata -> force single interval
+    return [{"label": "Interval 1", "value": 0}], 0
+
+    # Fallback: infer by time resets (legacy behavior)
+    strokes = _strokes_from_sd(sd)
     t = np.array([pt.get("t", np.nan) for pt in strokes], dtype=float)
     resets = np.where(np.diff(t) < -3.0)[0] + 1
-    nseg = int(len(resets) + 1)
+    nseg = int(len(resets) + 1) if len(t) else 0
     opts = [{"label": f"Interval {i+1}", "value": i} for i in range(nseg)]
     return opts, (0 if nseg > 0 else None)
+
 
 @app.callback(
     Output('cumulative-distance-graph', 'figure'),
@@ -507,9 +549,7 @@ def update_workout_graph(selected_workout, which_interval):
         return go.Figure(layout_title_text="No Data Available")
 
     sd = json.loads(selected_workout)
-    if isinstance(sd, str):
-        sd = json.loads(sd)
-    strokes = (sd or {}).get("data", [])
+    strokes = _strokes_from_sd(sd)
 
     # series (full workout)
     p   = np.array([pt.get("p",   0) for pt in strokes], dtype=float)   # pace (deci-sec/500m)
@@ -517,17 +557,37 @@ def update_workout_graph(selected_workout, which_interval):
     spm = np.array([pt.get("spm", 0) for pt in strokes], dtype=float)   # strokes/min
     t   = np.array([pt.get("t", np.nan) for pt in strokes], dtype=float)  # elapsed sec (resets by piece)
 
-    # interval boundaries where t drops
-    resets = np.where(np.diff(t) < -3.0)[0] + 1
-    boundaries = np.r_[0, resets, len(t)]
-    nseg = len(boundaries) - 1
+    # ----- segmentation: ONLY from explicit metadata -----
+    meta = _intervals_meta_from_sd(sd)
+    if isinstance(meta, list) and len(meta) >= 2:
+        nseg = len(meta)
 
-    # default to first interval if none selected
-    if which_interval is None or not (0 <= which_interval < nseg):
+        # If your metadata includes explicit index spans {a,b}, use them.
+        if isinstance(meta[0], dict) and "a" in meta[0] and "b" in meta[0]:
+            if which_interval is None or which_interval < 0 or which_interval >= nseg:
+                which_interval = 0
+            a = int(meta[which_interval]["a"])
+            b = int(meta[which_interval]["b"])
+
+        else:
+            # Otherwise: map metadata to segments using t resets, but ONLY because meta exists.
+            # If count mismatch, fall back to full workout.
+            resets = np.where(np.diff(t) < -3.0)[0] + 1
+            boundaries = np.r_[0, resets, len(t)]
+            if len(boundaries) - 1 == nseg:
+                if which_interval is None or which_interval < 0 or which_interval >= nseg:
+                    which_interval = 0
+                a, b = boundaries[which_interval], boundaries[which_interval + 1]
+            else:
+                # Unknown meta format; safest is full workout
+                which_interval = 0
+                a, b = 0, len(t)
+    else:
+        # No metadata -> single interval over the whole workout
+        nseg = 1
         which_interval = 0
+        a, b = 0, len(t)
 
-    # ---------- interval slice ----------
-    a, b = boundaries[which_interval], boundaries[which_interval + 1]
 
     t_seg = t[a:b].copy()
     p_seg = p[a:b].copy()
