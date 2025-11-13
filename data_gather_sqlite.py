@@ -198,6 +198,8 @@ def fetch_all_results_paginated(session: requests.Session, rower_id: str, date_f
             f"?from={date_from}&to={date_to}&number={PER_PAGE}")
 
     all_results: list[dict] = []
+
+
     page = 1
     next_url = f"{base}&page={page}"
 
@@ -208,13 +210,12 @@ def fetch_all_results_paginated(session: requests.Session, rower_id: str, date_f
 
         results_this_page = data["data"] or []
         all_results.extend(results_this_page)
-
         meta = (data.get("meta") or {}).get("pagination") or {}
         current = meta.get("current_page", page)
         total_pages = meta.get("total_pages")
         links = meta.get("links") or {}
         next_link = links.get("next")
-
+        
         if next_link:
             next_url = next_link
             page = current + 1
@@ -444,6 +445,9 @@ def main():
             log.info("HTTP session closed.")
         except Exception:
             log.exception("Error while closing HTTP session")
+
+
+
 
 if __name__ == "__main__":
     main()

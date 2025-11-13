@@ -449,7 +449,7 @@ def _update_top_section(flt, include_coaches):
               [["name","date","cumulative_distance"]])
     fig_cum = px.line(
         cum, x='date', y='cumulative_distance', color='name',
-        title="Total Team Cumulative Distance by Rower",
+        title="Cumulative Distance by Rower - Last 14 days",
         labels={'cumulative_distance': 'Cumulative Distance', 'date': 'Date', 'name': 'Rower'}
     )
 
