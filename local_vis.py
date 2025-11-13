@@ -10,6 +10,8 @@ import numpy as np
 import plotly.graph_objects as go
 
 
+
+
 COACHES = {"Toni Crnjak", "Boris Jukic", "Martijn Ronk"}
 
 def apply_filters(df: pd.DataFrame, flt: dict, *, force_allwinter: bool | None = None) -> pd.DataFrame:
@@ -57,6 +59,17 @@ df["distance"] = df["distance"].astype(float)
 df["hour"]=pd.to_datetime(df["hour"], format = "%H:%M:%S").dt.hour
 df["time"] = df["time"].astype(int)
 
+
+# After df is created and cleaned
+ALL_ROWERS = sorted(df["name"].unique())
+
+# pick a qualitative palette
+BASE_COLORS = px.colors.qualitative.Plotly #Plotly  # or .Bold, .Safe, etc.
+
+ROWER_COLOR_MAP = {
+    name: BASE_COLORS[i % len(BASE_COLORS)]
+    for i, name in enumerate(ALL_ROWERS)
+}
 
 
 #parse the json if workour has stroke data
@@ -444,14 +457,25 @@ def _update_top_section(flt, include_coaches):
     sub_lb = sub.copy()
 
     # 2) cumulative by rower
-    cum = (sub.sort_values(["name","date"])
-              .assign(cumulative_distance=sub.groupby("name")["distance"].cumsum())
-              [["name","date","cumulative_distance"]])
+    cum = sub.sort_values(["name","date"]).copy()
+    cum["cumulative_distance"] = cum.groupby("name")["distance"].cumsum()
+    cum = cum[["name","date","cumulative_distance"]]
+
     fig_cum = px.line(
-        cum, x='date', y='cumulative_distance', color='name',
+        cum,
+        x="date",
+        y="cumulative_distance",
+        color="name",
         title="Cumulative Distance by Rower - Last 14 days",
-        labels={'cumulative_distance': 'Cumulative Distance', 'date': 'Date', 'name': 'Rower'}
+        labels={
+            "cumulative_distance": "Cumulative Distance",
+            "date": "Date",
+            "name": "Rower",
+        },
+        color_discrete_map=ROWER_COLOR_MAP,      # <- stable colors
+        category_orders={"name": ALL_ROWERS},    # <- stable legend order
     )
+
 
     # 3) pie by time-of-day (force stable categories + order)
     tod_order = ["Morning", "Midday", "Evening"]
