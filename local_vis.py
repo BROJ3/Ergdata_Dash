@@ -141,12 +141,7 @@ app.layout = html.Div(
             }
         ),
 
-        html.H1("Clarkson Crew Performance Dashboard", className="dashboard-header"),
-        html.H4("Data Winter 25/26", className="dashboard-header"),
-
-
-
-
+        html.H1("Clarkson Crew Winter Meters", className="dashboard-header"),
 
         html.Div(
     className="filter-row",
