@@ -393,23 +393,44 @@ def build_stroke_figure(segment, title, interval_meta):
     p_raw = np.array([s.get("p", 0) for s in segment], float)
     pace_seconds = p_raw / 10.0
     pace_labels = [format_pace(v) for v in pace_seconds]
+        # --- Trim very slow strokes at the start and end if they are clear outliers ---
+    valid_idx = np.where(np.isfinite(pace_seconds) & (pace_seconds > 0))[0]
+
+    if valid_idx.size:
+        valid_pace = pace_seconds[valid_idx]
+        # threshold: drop strokes slower than this (e.g. warm-up / cool-down strokes)
+        thr = float(np.nanpercentile(valid_pace,70))  # keep ~98% fastest strokes               #KNOB
+
+        good = (
+            np.isfinite(pace_seconds)
+            & (pace_seconds > 0)
+            & (pace_seconds <= thr)
+        )
+
+        if good.any():
+            # first and last "good" strokes
+            first_good = int(np.argmax(good))  # first True from left
+            last_good = len(pace_seconds) - 1 - int(np.argmax(good[::-1]))  # from right
+
+            # Only trim if we’re actually dropping something at the edges
+            if first_good > 0 or last_good < len(pace_seconds) - 1:
+                sl = slice(first_good, last_good + 1)
+                t = t[sl]
+                hr = hr[sl]
+                spm = spm[sl]
+                d = d[sl]
+                pace_seconds = pace_seconds[sl]
+                pace_labels = pace_labels[sl]
+
 
     # 3) Distance axis (meters, normalized to start at 0)
-    x = np.arange(len(segment))
+    # ErgData's "d" field is in decimeters (0.1 m), so convert directly.
     if np.isfinite(d).any():
-        dt = np.diff(t)
-        dd = np.diff(d)
-        valid = (dt > 0) & np.isfinite(dt) & np.isfinite(dd)
+        d_m = d / 10.0          # decimeters -> meters
+        x = d_m - d_m[0]        # start interval at 0 m
+    else:
+        x = np.arange(len(segment))
 
-        d_m = d.copy()
-        if valid.any():
-            med_v = np.median(dd[valid] / dt[valid])
-            # heuristics: if speeds are too big, convert units
-            if med_v > 25:
-                d_m = d / 100.0
-            elif med_v > 8:
-                d_m = d / 10.0
-        x = d_m - d_m[0]
 
     # 4) Build figure
     fig = go.Figure()
@@ -423,6 +444,7 @@ def build_stroke_figure(segment, title, interval_meta):
         line=dict(width=0.8),
         customdata=pace_labels,
         hovertemplate="Distance=%{x:.0f} m<br>Pace=%{customdata}<extra></extra>"
+
     ))
 
     # HR trace
@@ -445,19 +467,48 @@ def build_stroke_figure(segment, title, interval_meta):
         hovertemplate="Distance=%{x:.0f} m<br>SPM=%{y:.0f}<extra></extra>"
     ))
 
-    # Pace axis ticks
-    if len(pace_seconds) and np.isfinite(pace_seconds).any():
-        y_min = float(np.nanmin(pace_seconds))
-        y_max = float(np.nanmax(pace_seconds))
+    
+    # ignore the first/last couple of strokes if they are odd.
+    idx_valid = np.where(np.isfinite(pace_seconds) & (pace_seconds > 0))[0]
+
+    if idx_valid.size:
+        # Core indices: drop first and last 2 valid strokes if we have enough
+        if idx_valid.size > 6:
+            core_idx = idx_valid[2:-2]
+        else:
+            core_idx = idx_valid
+
+        core_pace = pace_seconds[core_idx]
+
+        med = float(np.nanmedian(core_pace))
+        p10 = float(np.nanpercentile(core_pace, 10))
+        p90 = float(np.nanpercentile(core_pace, 90))
+
+        # Half-span around median based on spread, with a minimum width
+        half_span = max((p90 - p10) / 2.0, 10.0)   # at least ±10s
+        pad = 5.0
+
+        p_lo = med - half_span - pad
+        p_hi = med + half_span + pad
+
+        # Clamp to a reasonable global range (1:20–3:00 → 80–180s)
+        p_lo = max(p_lo, 80.0)
+        p_hi = min(p_hi, 180.0)
+
+        span = p_hi - p_lo
+        step = 5.0 if span <= 60.0 else 10.0
+
         ticks = np.arange(
-            np.floor(y_min / 10) * 10,
-            np.ceil(y_max / 10) * 10 + 1,
-            10
+            np.floor(p_lo / step) * step,
+            np.ceil(p_hi / step) * step + 0.1,
+            step
         )
         tick_text = [format_pace(v) for v in ticks]
     else:
         ticks = []
         tick_text = []
+
+
 
     fig.update_layout(
         title=title,

@@ -92,8 +92,8 @@ def collect_team_workouts(date_from: str, date_to: str) -> Dict[str, Any]:
     return root
 
 def main():
-    date_from = "2025-11-10"
-    date_to   = "2025-11-13"
+    date_from = "2025-11-14"
+    date_to   = "2025-11-16"
     data = collect_team_workouts(date_from, date_to)
     out = Path(f"team_workouts_{date_from}_to_{date_to}.json")
     out.write_text(json.dumps(data, ensure_ascii=False, indent=2))
