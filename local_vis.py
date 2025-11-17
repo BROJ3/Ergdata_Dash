@@ -259,7 +259,6 @@ app.layout = html.Div(
     ]
 )
 
-
 def _strokes_from_sd(sd: dict):
     """
     Return a list of stroke dicts from stroke_data payloads shaped as:
@@ -272,9 +271,6 @@ def _strokes_from_sd(sd: dict):
     if isinstance(slot, dict) and isinstance(slot.get("data"), list):
         return slot["data"]
     return slot if isinstance(slot, list) else []
-
-
-
 
 
 def _intervals_meta_from_sd(sd: dict):
@@ -295,6 +291,212 @@ def _intervals_meta_from_sd(sd: dict):
     return []
 
 
+def split_strokes_by_time_reset(strokes):
+    """
+    Split stroke list into segments whenever the Concept2 time counter resets.
+    """
+    if not strokes:
+        return []
+
+    t_vals = [s.get("t", 0) for s in strokes]
+
+    boundaries = [0]
+    for i in range(len(t_vals) - 1):
+        if t_vals[i + 1] < t_vals[i]:
+            boundaries.append(i + 1)
+    boundaries.append(len(strokes))
+
+    segments = []
+    for a, b in zip(boundaries[:-1], boundaries[1:]):
+        seg = strokes[a:b]
+        if seg:
+            segments.append(seg)
+    return segments
+
+
+def segments_for_sd(sd: dict):
+    """
+    Given a stroke_data payload (sd), return:
+      segments: list of stroke segments (one per interval-like piece)
+      intervals_meta: metadata list for intervals (if present)
+    """
+    strokes = _strokes_from_sd(sd)
+    segments = split_strokes_by_time_reset(strokes)
+    intervals_meta = _intervals_meta_from_sd(sd)
+    return segments, intervals_meta
+
+
+def build_interval_dropdown_options(segments, intervals_meta):
+    """
+    Build the interval dropdown options, similar to single_workout_vis.py.
+    """
+    options = []
+    for i, seg in enumerate(segments):
+        label = f"Interval {i + 1}"
+
+        if isinstance(intervals_meta, list) and i < len(intervals_meta):
+            meta = intervals_meta[i]
+            if isinstance(meta, dict):
+                t = meta.get("time")
+                d = meta.get("distance")
+                parts = []
+                if t is not None:
+                    parts.append(f"{t}s")
+                if d is not None:
+                    parts.append(f"{d}m")
+                if parts:
+                    label += " (" + ", ".join(parts) + ")"
+
+        options.append({"label": label, "value": i})
+    return options
+
+
+def format_pace(sec):
+    """
+    Convert seconds per 500m to 'M:SS.s' string (used for axis + hover).
+    """
+    if sec <= 0 or not np.isfinite(sec):
+        return "-"
+    m = int(sec // 60)
+    s = sec % 60
+    return f"{m}:{s:04.1f}"
+
+
+def build_stroke_figure(segment, title, interval_meta):
+    """
+    segment = list of strokes for this interval
+    interval_meta = metadata for this interval (contains programmed work time).
+    This is copied from single_workout_vis.py, adapted to use in local_vis.
+    """
+    # 1) Trim strokes to programmed work time (if available)
+    t = np.array([s.get("t", np.nan) for s in segment], float)
+
+    work_raw = None
+    if isinstance(interval_meta, dict) and ("time" in interval_meta):
+        # In your JSON, "time" is already seconds.
+        work_raw = float(interval_meta["time"])
+
+    if work_raw is not None and np.isfinite(work_raw):
+        t0 = t[0] if np.isfinite(t[0]) else 0.0
+        t_rel = t - t0
+        mask = np.isfinite(t_rel) & (t_rel <= work_raw)
+        if mask.any():
+            last = int(np.max(np.nonzero(mask)[0]))
+            segment = segment[: last + 1]
+            t = t[: last + 1]
+
+    # 2) Extract arrays AFTER trimming
+    hr = np.array([s.get("hr", 0) for s in segment], float)
+    spm = np.array([s.get("spm", 0) for s in segment], float)
+    d = np.array([s.get("d", np.nan) for s in segment], float)
+
+    p_raw = np.array([s.get("p", 0) for s in segment], float)
+    pace_seconds = p_raw / 10.0
+    pace_labels = [format_pace(v) for v in pace_seconds]
+
+    # 3) Distance axis (meters, normalized to start at 0)
+    x = np.arange(len(segment))
+    if np.isfinite(d).any():
+        dt = np.diff(t)
+        dd = np.diff(d)
+        valid = (dt > 0) & np.isfinite(dt) & np.isfinite(dd)
+
+        d_m = d.copy()
+        if valid.any():
+            med_v = np.median(dd[valid] / dt[valid])
+            # heuristics: if speeds are too big, convert units
+            if med_v > 25:
+                d_m = d / 100.0
+            elif med_v > 8:
+                d_m = d / 10.0
+        x = d_m - d_m[0]
+
+    # 4) Build figure
+    fig = go.Figure()
+
+    # Pace trace
+    fig.add_trace(go.Scatter(
+        x=x, y=pace_seconds,
+        name="Pace/500m",
+        mode="lines",
+        yaxis="y",
+        line=dict(width=0.8),
+        customdata=pace_labels,
+        hovertemplate="Distance=%{x:.0f} m<br>Pace=%{customdata}<extra></extra>"
+    ))
+
+    # HR trace
+    fig.add_trace(go.Scatter(
+        x=x, y=hr,
+        name="Heart Rate (bpm)",
+        line=dict(width=0.8),
+        mode="lines",
+        yaxis="y2",
+        hovertemplate="Distance=%{x:.0f} m<br>HR=%{y:.0f} bpm<extra></extra>"
+    ))
+
+    # SPM trace
+    fig.add_trace(go.Scatter(
+        x=x, y=spm,
+        name="SPM",
+        mode="lines",
+        yaxis="y3",
+        line=dict(width=0.8),
+        hovertemplate="Distance=%{x:.0f} m<br>SPM=%{y:.0f}<extra></extra>"
+    ))
+
+    # Pace axis ticks
+    if len(pace_seconds) and np.isfinite(pace_seconds).any():
+        y_min = float(np.nanmin(pace_seconds))
+        y_max = float(np.nanmax(pace_seconds))
+        ticks = np.arange(
+            np.floor(y_min / 10) * 10,
+            np.ceil(y_max / 10) * 10 + 1,
+            10
+        )
+        tick_text = [format_pace(v) for v in ticks]
+    else:
+        ticks = []
+        tick_text = []
+
+    fig.update_layout(
+        title=title,
+        xaxis=dict(title="Distance (m)"),
+        yaxis=dict(
+            title="Pace (mm:ss)",
+            autorange="reversed",
+            tickvals=ticks,
+            ticktext=tick_text
+        ),
+        yaxis2=dict(
+            title="Heart Rate (bpm)",
+            overlaying="y",
+            side="right",
+            range=[0, 220],
+            showgrid=False
+        ),
+        yaxis3=dict(
+            title="SPM",
+            overlaying="y",
+            side="right",
+            position=0.97,
+            range=[0, 50],
+            showgrid=False,
+            showticklabels=False
+        ),
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            x=0
+        ),
+        margin=dict(t=60, r=160),
+        height=600
+    )
+
+    return fig
+
+
 
 #when date changes, update filters.date
 @app.callback(
@@ -313,8 +515,6 @@ def set_date(start, end, allwinter_value, flt):
     # store a simple boolean flag
     flt["allwinter"] = ("ALL" in (allwinter_value or []))
     return flt
-
-
 
 #when rower select changes -> update filters.name
 @app.callback(
@@ -393,37 +593,25 @@ def update_workout_dropdown(selected_rower):
 
 
 
-
 @app.callback(
     Output("interval-dropdown", "options"),
     Output("interval-dropdown", "value"),
     Input("workout-dropdown", "value"),
 )
 def _update_interval_dropdown(selected_workout):
-
     if not selected_workout:
         return [], None
 
     sd = json.loads(selected_workout)
 
-    # Only trust explicit metadata; never infer.
-    meta = _intervals_meta_from_sd(sd)
-    n = len(meta) if isinstance(meta, list) else 0
+    # use the same logic as single_workout_vis: split by time reset
+    segments, intervals_meta = segments_for_sd(sd)
 
-    if n >= 2:
-        opts = [{"label": f"Interval {i+1}", "value": i} for i in range(n)]
-        return opts, 0
+    options = build_interval_dropdown_options(segments, intervals_meta)
+    value = options[0]["value"] if options else None
+    return options, value
 
-    # No valid metadata -> force single interval
-    return [{"label": "Interval 1", "value": 0}], 0
 
-    # Fallback: infer by time resets (legacy behavior)
-    strokes = _strokes_from_sd(sd)
-    t = np.array([pt.get("t", np.nan) for pt in strokes], dtype=float)
-    resets = np.where(np.diff(t) < -3.0)[0] + 1
-    nseg = int(len(resets) + 1) if len(t) else 0
-    opts = [{"label": f"Interval {i+1}", "value": i} for i in range(nseg)]
-    return opts, (0 if nseg > 0 else None)
 
 
 @app.callback(
@@ -558,6 +746,7 @@ def _update_top_section(flt, include_coaches):
 
     return fig_cum, fig_tod, fig_wday, table
 
+
 @app.callback(
     Output('workout-stroke-graph', 'figure'),
     Input('workout-dropdown', 'value'),
@@ -568,217 +757,23 @@ def update_workout_graph(selected_workout, which_interval):
         return go.Figure(layout_title_text="No Data Available")
 
     sd = json.loads(selected_workout)
-    strokes = _strokes_from_sd(sd)
+    segments, intervals_meta = segments_for_sd(sd)
 
-    # series (full workout)
-    p   = np.array([pt.get("p",   0) for pt in strokes], dtype=float)   # pace (deci-sec/500m)
-    hr  = np.array([pt.get("hr",  0) for pt in strokes], dtype=float)   # bpm
-    spm = np.array([pt.get("spm", 0) for pt in strokes], dtype=float)   # strokes/min
-    t   = np.array([pt.get("t", np.nan) for pt in strokes], dtype=float)  # elapsed sec (resets by piece)
+    if not segments:
+        return go.Figure(layout_title_text="No strokes in this workout")
 
-    # ----- segmentation: ONLY from explicit metadata -----
-    meta = _intervals_meta_from_sd(sd)
-    if isinstance(meta, list) and len(meta) >= 2:
-        nseg = len(meta)
-
-        # If your metadata includes explicit index spans {a,b}, use them.
-        if isinstance(meta[0], dict) and "a" in meta[0] and "b" in meta[0]:
-            if which_interval is None or which_interval < 0 or which_interval >= nseg:
-                which_interval = 0
-            a = int(meta[which_interval]["a"])
-            b = int(meta[which_interval]["b"])
-
-        else:
-            # Otherwise: map metadata to segments using t resets, but ONLY because meta exists.
-            # If count mismatch, fall back to full workout.
-            resets = np.where(np.diff(t) < -3.0)[0] + 1
-            boundaries = np.r_[0, resets, len(t)]
-            if len(boundaries) - 1 == nseg:
-                if which_interval is None or which_interval < 0 or which_interval >= nseg:
-                    which_interval = 0
-                a, b = boundaries[which_interval], boundaries[which_interval + 1]
-            else:
-                # Unknown meta format; safest is full workout
-                which_interval = 0
-                a, b = 0, len(t)
-    else:
-        # No metadata -> single interval over the whole workout
-        nseg = 1
+    if which_interval is None or which_interval < 0 or which_interval >= len(segments):
         which_interval = 0
-        a, b = 0, len(t)
 
+    seg = segments[which_interval]
+    meta = intervals_meta[which_interval] if (
+        isinstance(intervals_meta, list) and which_interval < len(intervals_meta)
+        and isinstance(intervals_meta[which_interval], dict)
+    ) else {}
 
-    t_seg = t[a:b].copy()
-    p_seg = p[a:b].copy()
-    hr_seg = hr[a:b].copy()
-    spm_seg = spm[a:b].copy()
+    title = f"Interval {which_interval + 1}"
 
-    # If distance 'd' exists, use it to detect movement too (optional but robust)
-    d = np.array([pt.get("d", np.nan) for pt in strokes], dtype=float)
-    d_seg = d[a:b] if len(d) == len(t) else None
-
-    # ---------- trim trailing rest ----------
-    SPM_ACTIVE = 12  # tweak if needed (10–16 usually works)
-    active_spm = np.isfinite(spm_seg) & (spm_seg >= SPM_ACTIVE)
-
-    if d_seg is not None and np.isfinite(d_seg).all():
-        delta_d = np.r_[0, np.diff(d_seg)]
-        moving = delta_d > 0
-        active_mask = active_spm | moving
-    else:
-        active_mask = active_spm
-
-    if active_mask.any():
-        last_active = np.max(np.nonzero(active_mask)[0])
-        # keep up to and including last active stroke
-        t_seg  = t_seg[:last_active + 1]
-        p_seg  = p_seg[:last_active + 1]
-        hr_seg = hr_seg[:last_active + 1]
-        spm_seg= spm_seg[:last_active + 1]
-        if d_seg is not None:
-            d_seg = d_seg[:last_active + 1]   
-
-        # ---------- x axis in meters (distance) ----------
-        # Pull raw distance; Concept2 often sends 'd' in decimeters (dm)
-        d = np.array([pt.get("d", np.nan) for pt in strokes], dtype=float)
-        d_seg = d[a:b] if len(d) == len(t) else None
-
-        if d_seg is not None and np.isfinite(d_seg).any():
-            # 1) Trim to last active stroke (already done above); d_seg now matches t_seg/p_seg slices
-
-            # 2) Detect units by speed and/or span
-            dt = np.diff(t_seg)
-            dd = np.diff(d_seg)
-            valid = (dt > 0) & np.isfinite(dt) & np.isfinite(dd)
-
-            d_m = d_seg.copy()
-            if valid.any():
-                med_v = np.median(dd[valid] / dt[valid])  # "distance per second" in whatever units d uses
-                # Typical rowing speed ≈ 3–6 m/s. If med_v is ~10× that, distance is in decimeters.
-                if med_v > 25:          # very rare: centimeters → /100
-                    d_m = d_seg / 100.0
-                elif med_v > 8:         # common: decimeters → /10
-                    d_m = d_seg / 10.0
-            else:
-                # Fallback by span
-                span = float(d_seg[-1] - d_seg[0])
-                if span > 500000:       # >500 km ⇒ centimeters
-                    d_m = d_seg / 100.0
-                elif span > 50000:      # >50 km  ⇒ decimeters
-                    d_m = d_seg / 10.0
-
-            # Make the interval start at 0 m
-            x_dist = d_m - d_m[0]
-            dist_labels = [f"{v:.0f} m" for v in x_dist]
-        else:
-            # No distance in stream → fall back to stroke index
-            x_dist = np.arange(len(p_seg))
-            dist_labels = [f"{int(v)}" for v in x_dist]
-
-        # convert decimeters → meters
-        d_m = d_seg / 10.0
-        x_dist = d_m - d_m[0]
-        dist_labels = [f"{v:.0f} m" for v in x_dist]
-
-        # tick setup (keep this)
-        total = x_dist[-1] if len(x_dist) else 0
-        step = 250  # or whatever tick spacing you prefer
-        xtickvals = list(np.arange(0, total + step, step))
-        xticktext = [f"{int(v)}" for v in xtickvals]  # label in meters
-
-
-
-
-
-    # ---------- figure ----------
-    fig = go.Figure()
-    pace_labels = [f"{int(v)//600}:{((int(v)%600)//10):02d}.{int(v)%10}" for v in p_seg]
-
-    fig.add_trace(go.Scatter(
-    x=x_dist, y=p_seg, name="Pace/500m", mode="lines",
-    customdata=np.column_stack([dist_labels, pace_labels]),
-    hovertemplate="Distance=%{customdata[0]}<br>Pace=%{customdata[1]}<extra></extra>"
-    )),
-    # Heart rate trace
-    fig.add_trace(go.Scatter(
-        x=x_dist, y=hr_seg,
-        name="Heart Rate (bpm)",
-        mode="lines",
-        yaxis="y2",
-        hovertemplate="Distance=%{x:.0f} m<br>HR=%{y:.0f} bpm<extra></extra>"
-    )),
-    fig.add_trace(go.Scatter(
-        x=x_dist, y=spm_seg, name="SPM", mode="lines", yaxis="y3",
-        customdata=dist_labels,
-        hovertemplate="Distance=%{customdata}<br>SPM=%{y:.0f}<extra></extra>"
-    ))
-
-    fig.update_traces(line=dict(width=0.8))
-
-
-
-    # Pace ticks (deci-sec → mm:ss)
-    tickvals = list(range(540, 2341, 180))  # 1:30 .. 3:54 every 30s
-    ticktext = [f"{v//600}:{(v%600)//10:02d}" for v in tickvals]
-
-    fig.update_layout(
-        title=f"Workout: Pace, HR, and SPM — Interval {which_interval+1}/{nseg}",
-        # x-axis: linear seconds with custom mm:ss ticks
-        xaxis=dict(
-        title="Distance (m)",
-        tickmode="array",
-        tickvals=xtickvals,
-        ticktext=xticktext
-    ),
-
-        # left y (pace)
-        yaxis=dict(
-            title="Pace (mm:ss / 500m)",
-            tickmode="array", tickvals=tickvals, ticktext=ticktext,
-            autorange="reversed", range=[max(tickvals), min(tickvals)]
-        ),
-        # right y (HR) – outer
-        yaxis2=dict(
-            title="Heart Rate (bpm)",
-            overlaying="y",
-            side="right",
-            anchor="free",
-            range=[0,220],
-            position=1.0,          # right edge
-            showgrid=False,
-            title_standoff=12
-        ),
-        # right y (SPM) – slightly inside, no ticks to avoid overlap
-        yaxis3=dict(
-            title="SPM",
-            overlaying="y",
-            side="right",
-            anchor="free",
-            position=0.96,
-            showgrid=False,
-            showticklabels=False,
-            ticks="",
-            title_standoff=36
-        ),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
-        margin=dict(t=60, r=160)
-    )
-
-    # headroom for HR & SPM
-    if np.any(hr > 0):
-        hr_min, hr_max = np.nanmin(hr), np.nanmax(hr)
-        pad = max(3, 0.08 * (hr_max - hr_min if hr_max > hr_min else 10))
-        fig.update_layout(yaxis2=dict(range=[hr_min - pad, hr_max + pad],
-                                      overlaying="y", side="right"))
-    if np.any(spm > 0):
-        spm_min, spm_max = np.nanmin(spm), np.nanmax(spm)
-        pad = max(1, 0.12 * (spm_max - spm_min if spm_max > spm_min else 5))
-        fig.update_layout(yaxis3=dict(range=[spm_min - pad, spm_max + pad],
-                                      overlaying="y", side="right",
-                                      anchor="free", position=0.96))
-
-    return fig
-
+    return build_stroke_figure(seg, title, meta)
 
 
 
