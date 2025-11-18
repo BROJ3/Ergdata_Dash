@@ -130,3 +130,70 @@ h1 {
         border-radius: 0;
     }
 }
+
+
+/* ---- Intervals summary table ---- */
+
+.intervals-title {
+    margin: 12px 0 4px;
+    font-size: 1.05rem;
+    font-weight: 600;
+  }
+  
+  .intervals-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+    table-layout: fixed;      /* keeps columns stable */
+  }
+  
+  .intervals-table th,
+  .intervals-table td {
+    padding: 4px 8px;
+    border-bottom: 1px solid #e0e0e0;
+  }
+  
+  /* header row */
+  .intervals-header-row th {
+    text-align: right;
+    background-color: #f5f7fb;
+    font-weight: 600;
+  }
+  
+  .intervals-header-row th:first-child {
+    text-align: left;
+  }
+  
+  /* zebra striping for readability */
+  .interval-row:nth-child(even) {
+    background-color: #fafafa;
+  }
+  
+  /* label and numeric alignment */
+  .label-cell {
+    text-align: left;
+    white-space: nowrap;
+  }
+  
+  .numeric-cell {
+    text-align: right;
+    font-family: "Roboto Mono", Menlo, Consolas, monospace;
+  }
+  
+  /* highlight total row */
+  .interval-row-total {
+    font-weight: 600;
+    border-top: 2px solid #c0c8e0;
+  }
+  
+  /* highlight selected/slider-filtered interval */
+  .interval-row-selected {
+    background-color: #e7f3ff;
+    border-left: 3px solid #2576d2;
+  }
+  
+  /* small hover effect */
+  .interval-row:hover {
+    background-color: #f0f4ff;
+  }
+  

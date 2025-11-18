@@ -263,17 +263,20 @@ app.layout = html.Div(
                 dcc.RangeSlider(
                     id="distance-range",
                     min=0,
-                    max=1000,          # placeholder; will be updated by callback
+                    max=1000,
                     step=50,
-                    value=[0, 1000],   # placeholder; will be updated by callback
+                    value=[0, 1000],
                     allowCross=False,
                     tooltip={"placement": "bottom", "always_visible": False},
-                    updatemode="mouseup",   # update when mouse is released
+                    updatemode="mouseup",
                     marks=None
-
                 ),
             ],
-        )
+        ),
+        html.Div(
+            id="summary-table",
+            style={"width": "80%", "margin": "0 auto 40px"},
+        ),
     ]
 )
 
@@ -384,30 +387,56 @@ def segments_for_sd(sd: dict):
     return segments, intervals_meta
 
 
-
 def build_interval_dropdown_options(segments, intervals_meta):
     """
-    Build the interval dropdown options, similar to single_workout_vis.py.
+    Build the interval dropdown options.
+    - Converts time from deciseconds → seconds
+    - Formats time nicely: 18000 → '30:00'
     """
+    def fmt_time_ds(ds):
+        """Format deciseconds (Concept2) as M:SS or H:MM:SS."""
+        if ds is None:
+            return None
+        sec = float(ds) / 10.0
+        h = int(sec // 3600)
+        m = int((sec % 3600) // 60)
+        s = int(sec % 60)
+        if h > 0:
+            return f"{h}:{m:02d}:{s:02d}"
+        else:
+            return f"{m}:{s:02d}"
+
     options = []
+
     for i, seg in enumerate(segments):
         label = f"Interval {i + 1}"
 
         if isinstance(intervals_meta, list) and i < len(intervals_meta):
-            meta = intervals_meta[i]
+            meta = intervals_meta[i]   # ← FIXED
+
             if isinstance(meta, dict):
-                t = meta.get("time")
-                d = meta.get("distance")
+                t = meta.get("time")       # deciseconds
+                d = meta.get("distance")   # meters
+
                 parts = []
+
+                # Format time
                 if t is not None:
-                    parts.append(f"{t}s")
+                    t_formatted = fmt_time_ds(t)
+                    if t_formatted:
+                        parts.append(t_formatted)
+
+                # Format distance
                 if d is not None:
-                    parts.append(f"{d}m")
+                    parts.append(f"{int(d)}m")
+
                 if parts:
                     label += " (" + ", ".join(parts) + ")"
 
         options.append({"label": label, "value": i})
+
     return options
+
 
 
 def format_pace(sec):
@@ -421,18 +450,44 @@ def format_pace(sec):
     return f"{m}:{s:04.1f}"
 
 
-def build_stroke_figure(segment, title, interval_meta):
+def format_time_hms(sec):
     """
-    segment = list of strokes for this interval
-    interval_meta = metadata for this interval (contains programmed work time).
-    This is copied from single_workout_vis.py, adapted to use in local_vis.
+    Format total time in seconds as H:MM:SS.s (or M:SS.s if < 1h)
     """
-    # 1) Trim strokes to programmed work time (if available)
-    t = np.array([s.get("t", np.nan) for s in segment], float)
+    if sec is None or sec <= 0 or not np.isfinite(sec):
+        return "-"
+    sec = float(sec)
+    h = int(sec // 3600)
+    rem = sec - h * 3600
+    m = int(rem // 60)
+    s = rem - m * 60
+    if h > 0:
+        return f"{h}:{m:02d}:{s:04.1f}"
+    else:
+        return f"{m}:{s:04.1f}"
 
+
+def prepare_segment_data(segment, interval_meta):
+    """
+    Same trimming/scaling logic as build_stroke_figure, but instead of
+    building a figure we just return arrays for summaries & slider logic.
+    Returns dict with keys: x, t, pace_s, hr, spm
+    """
+    if not segment:
+        empty = np.array([], dtype=float)
+        return dict(x=empty, t=empty, pace_s=empty, hr=empty, spm=empty)
+
+    # ----- raw arrays -----
+    t = np.array([s.get("t", np.nan) for s in segment], float)
+    hr = np.array([s.get("hr", 0) for s in segment], float)
+    spm = np.array([s.get("spm", 0) for s in segment], float)
+    d = np.array([s.get("d", np.nan) for s in segment], float)
+    p_raw = np.array([s.get("p", 0) for s in segment], float)
+    pace_seconds = p_raw / 10.0
+
+    # ----- trim to programmed work time, if present -----
     work_raw = None
     if isinstance(interval_meta, dict) and ("time" in interval_meta):
-        # In your JSON, "time" is already seconds.
         work_raw = float(interval_meta["time"])
 
     if work_raw is not None and np.isfinite(work_raw):
@@ -441,24 +496,17 @@ def build_stroke_figure(segment, title, interval_meta):
         mask = np.isfinite(t_rel) & (t_rel <= work_raw)
         if mask.any():
             last = int(np.max(np.nonzero(mask)[0]))
-            segment = segment[: last + 1]
             t = t[: last + 1]
+            hr = hr[: last + 1]
+            spm = spm[: last + 1]
+            d = d[: last + 1]
+            pace_seconds = pace_seconds[: last + 1]
 
-    # 2) Extract arrays AFTER trimming
-    hr = np.array([s.get("hr", 0) for s in segment], float)
-    spm = np.array([s.get("spm", 0) for s in segment], float)
-    d = np.array([s.get("d", np.nan) for s in segment], float)
-
-    p_raw = np.array([s.get("p", 0) for s in segment], float)
-    pace_seconds = p_raw / 10.0
-    pace_labels = [format_pace(v) for v in pace_seconds]
-        # --- Trim very slow strokes at the start and end if they are clear outliers ---
+    # ----- trim very slow edge strokes (same idea as graph) -----
     valid_idx = np.where(np.isfinite(pace_seconds) & (pace_seconds > 0))[0]
-
     if valid_idx.size:
         valid_pace = pace_seconds[valid_idx]
-        # threshold: drop strokes slower than this (e.g. warm-up / cool-down strokes)
-        thr = float(np.nanpercentile(valid_pace,99))  # keep ~98% fastest strokes               #KNOB
+        thr = float(np.nanpercentile(valid_pace, 98))  # KNOB for aggressiveness
 
         good = (
             np.isfinite(pace_seconds)
@@ -467,11 +515,8 @@ def build_stroke_figure(segment, title, interval_meta):
         )
 
         if good.any():
-            # first and last "good" strokes
-            first_good = int(np.argmax(good))  # first True from left
-            last_good = len(pace_seconds) - 1 - int(np.argmax(good[::-1]))  # from right
-
-            # Only trim if we’re actually dropping something at the edges
+            first_good = int(np.argmax(good))
+            last_good = len(pace_seconds) - 1 - int(np.argmax(good[::-1]))
             if first_good > 0 or last_good < len(pace_seconds) - 1:
                 sl = slice(first_good, last_good + 1)
                 t = t[sl]
@@ -479,19 +524,237 @@ def build_stroke_figure(segment, title, interval_meta):
                 spm = spm[sl]
                 d = d[sl]
                 pace_seconds = pace_seconds[sl]
-                pace_labels = pace_labels[sl]
 
-
-    # 3) Distance axis (meters, normalized to start at 0)
-    # ErgData's "d" field is in decimeters (0.1 m), so convert directly.
+    # ----- distance axis (decimeters -> meters, start at 0) -----
     if np.isfinite(d).any():
-        d_m = d / 10.0          # decimeters -> meters
-        x = d_m - d_m[0]        # start interval at 0 m
+        d_m = d / 10.0
+        x = d_m - d_m[0]
     else:
-        x = np.arange(len(segment))
+        x = np.arange(len(t))
+
+    return dict(x=x, t=t, pace_s=pace_seconds, hr=hr, spm=spm)
 
 
-    # 4) Build figure
+def compute_pace_from_time_distance(time_s, dist_m):
+    if time_s is None or dist_m is None or time_s <= 0 or dist_m <= 0:
+        return np.nan
+    return (float(time_s) / float(dist_m)) * 500.0
+
+
+def compute_watts_from_pace(pace_500_s):
+    """
+    Concept2 formula: watts = 2.8 / (pace/500)^3
+    """
+    if pace_500_s is None or pace_500_s <= 0 or not np.isfinite(pace_500_s):
+        return np.nan
+    return 2.8 / (pace_500_s / 500.0) ** 3
+
+
+def compute_cal_per_hour(calories_total, time_s):
+    if (calories_total is None or time_s is None or
+            time_s <= 0 or not np.isfinite(time_s)):
+        return np.nan
+    return (float(calories_total) * 3600.0) / float(time_s)
+
+
+def make_summary_row(label, time_s, dist_m, calories, stroke_rate, hr_avg):
+    pace_500 = compute_pace_from_time_distance(time_s, dist_m)
+    watts = compute_watts_from_pace(pace_500)
+    cal_hr = compute_cal_per_hour(calories, time_s)
+
+    return {
+        "label": label,
+        "time": format_time_hms(time_s),
+        "meters": int(round(dist_m)) if dist_m is not None and np.isfinite(dist_m) else "-",
+        "pace": format_pace(pace_500) if np.isfinite(pace_500) else "-",
+        "spm": int(round(stroke_rate)) if stroke_rate is not None and np.isfinite(stroke_rate) else "-",
+        "hr": int(round(hr_avg)) if hr_avg is not None and np.isfinite(hr_avg) else "-",
+    }
+
+
+def compute_summary_rows_local(selected_workout_str, which_interval, distance_range):
+    """
+    Build summary rows for local_vis:
+      - Workout total (from df row, with fallback to intervals_meta)
+      - One row per interval (from intervals_meta)
+      - Current view (slider-filtered part of selected interval)
+    """
+    rows = []
+
+    if not selected_workout_str:
+        return rows
+
+    # --- parse stroke_data JSON and get segments + interval meta ---
+    sd = json.loads(selected_workout_str)
+    segments, intervals_meta = segments_for_sd(sd)
+
+    # --- find the df row for this workout (value is json.dumps(stroke_data)) ---
+    mask = df["stroke_data"].notna() & df["stroke_data"].apply(
+        lambda x: json.dumps(x) == selected_workout_str
+    )
+    wrow = df[mask].iloc[0] if mask.any() else None
+
+    # ---------- WORKOUT TOTAL: time & distance ----------
+    w_time = None
+    w_dist = None
+
+    if wrow is not None:
+        # time from DB (may be seconds or deciseconds or missing)
+        raw_w_time = wrow.get("time")
+        if raw_w_time is not None:
+            val = float(raw_w_time)
+            # if it looks like deciseconds (very large), convert
+            if val > 6 * 3600:  # > 6 hours of rowing is unlikely
+                val = val / 10.0
+            if val > 0:
+                w_time = val
+
+        # distance from DB
+        raw_w_dist = wrow.get("distance")
+        if raw_w_dist is not None:
+            val = float(raw_w_dist)
+            if val > 0:
+                w_dist = val
+
+    # totals from intervals_meta (time in deciseconds, distance in meters)
+    total_ds = 0.0
+    total_dist = 0.0
+    if isinstance(intervals_meta, list):
+        for m in intervals_meta:
+            if not isinstance(m, dict):
+                continue
+            if m.get("time") is not None:
+                total_ds += float(m["time"])
+            if m.get("distance") is not None:
+                total_dist += float(m["distance"])
+
+    if (w_time is None or w_time <= 0 or not np.isfinite(w_time)) and total_ds > 0:
+        w_time = total_ds / 10.0  # deciseconds → seconds
+    if (w_dist is None or w_dist <= 0 or not np.isfinite(w_dist)) and total_dist > 0:
+        w_dist = total_dist
+
+    if w_time is None:
+        w_time = 0.0
+    if w_dist is None:
+        w_dist = 0.0
+
+    # ---------- WORKOUT TOTAL: avg SPM & HR ----------
+    spm_total = None
+    hr_total = None
+    if segments:
+        all_spm = []
+        all_hr = []
+        for seg in segments:
+            for s in seg:
+                s_spm = s.get("spm")
+                s_hr = s.get("hr")
+                if s_spm is not None and s_spm > 0:
+                    all_spm.append(float(s_spm))
+                if s_hr is not None and s_hr > 0:
+                    all_hr.append(float(s_hr))
+        if all_spm:
+            spm_total = float(np.mean(all_spm))
+        if all_hr:
+            hr_total = float(np.mean(all_hr))
+
+    # workout total row (now with S/M and HR, but same time/pace as before)
+    rows.append(make_summary_row("Workout total", w_time, w_dist, None, spm_total, hr_total))
+
+    # ---------- INTERVAL ROWS ----------
+    for i, meta in enumerate(intervals_meta or []):
+        if not isinstance(meta, dict):
+            continue
+
+        # time is in deciseconds → convert to seconds
+        raw_t = meta.get("time")
+        t_s = float(raw_t) / 10.0 if raw_t is not None else 0.0
+
+        raw_d = meta.get("distance")
+        d_m = float(raw_d) if raw_d is not None else 0.0
+
+        c_tot = meta.get("calories_total")
+        if c_tot is not None:
+            c_tot = float(c_tot)
+
+        sr = meta.get("stroke_rate")
+        if sr is not None:
+            sr = float(sr)
+
+        hr_avg = None
+        hr_meta = meta.get("heart_rate")
+        if isinstance(hr_meta, dict):
+            hr_avg = hr_meta.get("average")
+
+        rows.append(
+            make_summary_row(f"Interval {i + 1}", t_s, d_m, c_tot, sr, hr_avg)
+        )
+
+    # ---------- CURRENT VIEW ----------
+    if segments:
+        if which_interval is None or which_interval < 0 or which_interval >= len(segments):
+            which_interval = 0
+
+        seg = segments[which_interval]
+        meta = (
+            intervals_meta[which_interval]
+            if isinstance(intervals_meta, list)
+            and which_interval < len(intervals_meta)
+            and isinstance(intervals_meta[which_interval], dict)
+            else {}
+        )
+
+        data = prepare_segment_data(seg, meta)
+        x = data["x"]
+        t = data["t"]
+        hr = data["hr"]
+        spm = data["spm"]
+
+        label = f"Selected Interval (Interval {which_interval + 1})"
+
+        if x.size >= 2:
+            if distance_range and len(distance_range) == 2:
+                low, high = distance_range
+                mask = (x >= low) & (x <= high)
+                if mask.sum() >= 2:
+                    x = x[mask]
+                    t = t[mask]
+                    hr = hr[mask]
+                    spm = spm[mask]
+
+            if x.size >= 2:
+                dist_m = float(x[-1] - x[0])
+                # t is in deciseconds → seconds
+                time_s = float(t[-1] - t[0]) / 10.0
+                hr_valid = hr[hr > 0]
+                spm_valid = spm[spm > 0]
+                hr_avg = float(np.mean(hr_valid)) if hr_valid.size > 0 else None
+                spm_avg = float(np.mean(spm_valid)) if spm_valid.size > 0 else None
+
+                rows.insert(
+                    0,
+                    make_summary_row(label, time_s, dist_m, None, spm_avg, hr_avg)
+                )
+    return rows
+
+
+
+def build_stroke_figure(segment, title, interval_meta):
+    """
+    segment = list of strokes for this interval
+    interval_meta = metadata for this interval (contains programmed work time).
+    """
+    data = prepare_segment_data(segment, interval_meta)
+    x = data["x"]
+    t = data["t"]
+    pace_seconds = data["pace_s"]
+    hr = data["hr"]
+    spm = data["spm"]
+
+    if x.size == 0:
+        return go.Figure(layout_title_text=title)
+
+    pace_labels = [format_pace(v) for v in pace_seconds]
+
     fig = go.Figure()
 
     # Pace trace
@@ -503,7 +766,6 @@ def build_stroke_figure(segment, title, interval_meta):
         line=dict(width=0.8),
         customdata=pace_labels,
         hovertemplate="Distance=%{x:.0f} m<br>Pace=%{customdata}<extra></extra>"
-
     ))
 
     # HR trace
@@ -525,17 +787,13 @@ def build_stroke_figure(segment, title, interval_meta):
         line=dict(width=0.8),
         hovertemplate="Distance=%{x:.0f} m<br>SPM=%{y:.0f}<extra></extra>"
     ))
-    
-    
 
-    
-    # ignore the first/last couple of strokes if they are odd.
+    # ----- pace axis ticks (same logic you already had) -----
     idx_valid = np.where(np.isfinite(pace_seconds) & (pace_seconds > 0))[0]
 
     if idx_valid.size:
-        # Core indices: drop first and last 2 valid strokes if we have enough
         if idx_valid.size > 6:
-            core_idx = idx_valid[0:-1]
+            core_idx = idx_valid[2:-2]
         else:
             core_idx = idx_valid
 
@@ -545,25 +803,20 @@ def build_stroke_figure(segment, title, interval_meta):
         p10 = float(np.nanpercentile(core_pace, 10))
         p90 = float(np.nanpercentile(core_pace, 90))
 
-        # Half-span around median based on spread, with a minimum width
-        half_span = max((p90 - p10), 12.0)   # roughly double the previous span
+        half_span = max((p90 - p10), 12.0)
         pad = 5.0
 
         p_lo = med - half_span - pad
         p_hi = med + half_span + pad
 
-        # Clamp to a reasonable global range (1:20–3:00 → 80–180s)
-        # Clamp to a reasonable global range (1:20–3:00 → 80–180s)
         p_lo = max(p_lo, 80.0)
         p_hi = min(p_hi, 180.0)
 
         span = p_hi - p_lo
 
-        # "Nice" round splits every 5 seconds: 1:20, 1:25, 1:30, ..., 3:00
         nice = np.arange(80.0, 181.0, 1.0)
         ticks = nice[(nice >= p_lo) & (nice <= p_hi)]
 
-        # Fallback: if for some weird reason we got < 3 ticks, use uniform grid
         if ticks.size < 3:
             step = 1.0 if span <= 60.0 else 1.0
             ticks = np.arange(
@@ -573,12 +826,9 @@ def build_stroke_figure(segment, title, interval_meta):
             )
 
         tick_text = [format_pace(v) for v in ticks]
-
     else:
         ticks = []
         tick_text = []
-
-
 
     fig.update_layout(
         title=title,
@@ -973,6 +1223,64 @@ def update_workout_graph(selected_workout, which_interval, distance_range):
         fig.update_xaxes(range=[low, high])
 
     return fig
+
+
+
+@app.callback(
+    Output("summary-table", "children"),
+    Input("workout-dropdown", "value"),
+    Input("interval-dropdown", "value"),
+    Input("distance-range", "value"),
+)
+def update_summary_table(selected_workout, which_interval, distance_range):
+    rows = compute_summary_rows_local(selected_workout, which_interval, distance_range)
+
+    if not rows:
+        return html.Div("No data")
+
+    header = html.Tr(
+        [
+            html.Th("Label"),
+            html.Th("Time"),
+            html.Th("Meters"),
+            html.Th("Pace"),
+            html.Th("S/M"),
+            html.Th("HR"),
+        ],
+        className="intervals-header-row",
+    )
+
+    body = []
+    for r in rows:
+        row_classes = ["interval-row"]
+        if r["label"].startswith("Selected Interval"):
+            row_classes.append("interval-row-selected")
+        if r["label"].startswith("Workout total"):
+            row_classes.append("interval-row-total")
+
+        body.append(
+            html.Tr(
+                [
+                    html.Td(r["label"], className="interval-cell label-cell"),
+                    html.Td(r["time"], className="interval-cell numeric-cell"),
+                    html.Td(r["meters"], className="interval-cell numeric-cell"),
+                    html.Td(r["pace"], className="interval-cell numeric-cell"),
+                    html.Td(r["spm"], className="interval-cell numeric-cell"),
+                    html.Td(r["hr"], className="interval-cell numeric-cell"),
+                ],
+                className=" ".join(row_classes),
+            )
+        )
+
+    return html.Div(
+        [
+            html.H4("Intervals", className="intervals-title"),
+            html.Table(
+                [header] + body,
+                className="intervals-table",
+            ),
+        ]
+    )
 
 
 if __name__ == '__main__':
