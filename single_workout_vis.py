@@ -208,6 +208,7 @@ def build_stroke_figure(segment, title, interval_meta):
             range=[0, 220],
             showgrid=False
         ),
+        
         yaxis3=dict(
             title="SPM",
             overlaying="y",
@@ -221,6 +222,11 @@ def build_stroke_figure(segment, title, interval_meta):
         margin=dict(t=60, r=160),
         height=600
     )
+    fig.update_xaxes(
+    rangeslider=dict(visible=True),
+    type="linear"
+)
+
 
     return fig
 

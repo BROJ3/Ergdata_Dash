@@ -255,7 +255,25 @@ app.layout = html.Div(
             ])
             ]
         ),
-        dcc.Graph(id='workout-stroke-graph')
+        dcc.Graph(id='workout-stroke-graph'),
+        html.Div(
+            style={"width": "80%", "margin": "20px auto 40px"},
+            children=[
+                html.Label("Filter interval by distance (m):"),
+                dcc.RangeSlider(
+                    id="distance-range",
+                    min=0,
+                    max=1000,          # placeholder; will be updated by callback
+                    step=50,
+                    value=[0, 1000],   # placeholder; will be updated by callback
+                    allowCross=False,
+                    tooltip={"placement": "bottom", "always_visible": False},
+                    updatemode="mouseup",   # update when mouse is released
+                    marks=None
+
+                ),
+            ],
+        )
     ]
 )
 
@@ -319,11 +337,52 @@ def segments_for_sd(sd: dict):
     Given a stroke_data payload (sd), return:
       segments: list of stroke segments (one per interval-like piece)
       intervals_meta: metadata list for intervals (if present)
+
+    Special case:
+    - Some single continuous pieces (e.g. 2000m with 500m splits) have:
+        * strokes: one continuous time segment
+        * intervals_meta: multiple split entries (500m, 500m, 500m, 500m)
+      In that case we want to treat the whole thing as ONE interval, so we
+      collapse the meta list into a single total (time + distance).
     """
     strokes = _strokes_from_sd(sd)
     segments = split_strokes_by_time_reset(strokes)
     intervals_meta = _intervals_meta_from_sd(sd)
+
+    # If there is only one continuous stroke segment but multiple meta entries,
+    # assume it's a continuous piece with splits and collapse the meta.
+    if (
+        isinstance(segments, list)
+        and len(segments) == 1
+        and isinstance(intervals_meta, list)
+        and len(intervals_meta) > 1
+    ):
+        total_time = 0.0
+        total_dist = 0.0
+        has_time = False
+        has_dist = False
+
+        for m in intervals_meta:
+            if not isinstance(m, dict):
+                continue
+            if "time" in m and m["time"] is not None:
+                has_time = True
+                total_time += float(m["time"])
+            if "distance" in m and m["distance"] is not None:
+                has_dist = True
+                total_dist += float(m["distance"])
+
+        combined = {}
+        if has_time:
+            combined["time"] = total_time
+        if has_dist:
+            combined["distance"] = total_dist
+
+        # Replace with a single combined meta entry
+        intervals_meta = [combined] if combined else []
+
     return segments, intervals_meta
+
 
 
 def build_interval_dropdown_options(segments, intervals_meta):
@@ -399,7 +458,7 @@ def build_stroke_figure(segment, title, interval_meta):
     if valid_idx.size:
         valid_pace = pace_seconds[valid_idx]
         # threshold: drop strokes slower than this (e.g. warm-up / cool-down strokes)
-        thr = float(np.nanpercentile(valid_pace,70))  # keep ~98% fastest strokes               #KNOB
+        thr = float(np.nanpercentile(valid_pace,99))  # keep ~98% fastest strokes               #KNOB
 
         good = (
             np.isfinite(pace_seconds)
@@ -466,6 +525,8 @@ def build_stroke_figure(segment, title, interval_meta):
         line=dict(width=0.8),
         hovertemplate="Distance=%{x:.0f} m<br>SPM=%{y:.0f}<extra></extra>"
     ))
+    
+    
 
     
     # ignore the first/last couple of strokes if they are odd.
@@ -474,7 +535,7 @@ def build_stroke_figure(segment, title, interval_meta):
     if idx_valid.size:
         # Core indices: drop first and last 2 valid strokes if we have enough
         if idx_valid.size > 6:
-            core_idx = idx_valid[2:-2]
+            core_idx = idx_valid[0:-1]
         else:
             core_idx = idx_valid
 
@@ -485,25 +546,34 @@ def build_stroke_figure(segment, title, interval_meta):
         p90 = float(np.nanpercentile(core_pace, 90))
 
         # Half-span around median based on spread, with a minimum width
-        half_span = max((p90 - p10) / 2.0, 10.0)   # at least ±10s
+        half_span = max((p90 - p10), 12.0)   # roughly double the previous span
         pad = 5.0
 
         p_lo = med - half_span - pad
         p_hi = med + half_span + pad
 
         # Clamp to a reasonable global range (1:20–3:00 → 80–180s)
+        # Clamp to a reasonable global range (1:20–3:00 → 80–180s)
         p_lo = max(p_lo, 80.0)
         p_hi = min(p_hi, 180.0)
 
         span = p_hi - p_lo
-        step = 5.0 if span <= 60.0 else 10.0
 
-        ticks = np.arange(
-            np.floor(p_lo / step) * step,
-            np.ceil(p_hi / step) * step + 0.1,
-            step
-        )
+        # "Nice" round splits every 5 seconds: 1:20, 1:25, 1:30, ..., 3:00
+        nice = np.arange(80.0, 181.0, 1.0)
+        ticks = nice[(nice >= p_lo) & (nice <= p_hi)]
+
+        # Fallback: if for some weird reason we got < 3 ticks, use uniform grid
+        if ticks.size < 3:
+            step = 1.0 if span <= 60.0 else 1.0
+            ticks = np.arange(
+                np.floor(p_lo / step) * step,
+                np.ceil(p_hi / step) * step + 0.1,
+                step
+            )
+
         tick_text = [format_pace(v) for v in ticks]
+
     else:
         ticks = []
         tick_text = []
@@ -546,6 +616,24 @@ def build_stroke_figure(segment, title, interval_meta):
     )
 
     return fig
+
+
+def get_distance_axis_for_segment(segment, interval_meta, title="tmp"):
+    """
+    Build a temporary figure with build_stroke_figure and extract the
+    distance axis (x) from the first trace. This guarantees the slider
+    uses the *exact* same x as the plot (after trimming / scaling).
+    """
+    tmp_fig = build_stroke_figure(segment, title, interval_meta)
+    if not tmp_fig.data:
+        return np.array([0.0, 1.0])
+
+    x_vals = np.asarray(tmp_fig.data[0].x, dtype=float)
+
+    if not np.isfinite(x_vals).any():
+        return np.array([0.0, 1.0])
+
+    return x_vals
 
 
 
@@ -662,6 +750,56 @@ def _update_interval_dropdown(selected_workout):
     value = options[0]["value"] if options else None
     return options, value
 
+
+@app.callback(
+    Output("distance-range", "min"),
+    Output("distance-range", "max"),
+    Output("distance-range", "value"),
+    Input("workout-dropdown", "value"),
+    Input("interval-dropdown", "value"),
+)
+def _update_distance_slider(selected_workout, which_interval):
+    """
+    Whenever workout or interval changes, recompute the distance axis
+    and reset the slider to cover the full interval.
+    """
+    if not selected_workout:
+        return 0.0, 100.0, [0.0, 100.0]
+
+    sd = json.loads(selected_workout)
+    segments, intervals_meta = segments_for_sd(sd)
+
+    if not segments:
+        return 0.0, 100.0, [0.0, 100.0]
+
+    if which_interval is None or which_interval < 0 or which_interval >= len(segments):
+        which_interval = 0
+
+    seg = segments[which_interval]
+    meta = (
+        intervals_meta[which_interval]
+        if isinstance(intervals_meta, list)
+        and which_interval < len(intervals_meta)
+        and isinstance(intervals_meta[which_interval], dict)
+        else {}
+    )
+
+    # use the same distance axis as the figure
+    x_vals = get_distance_axis_for_segment(seg, meta, title="tmp")
+
+    x_min = float(np.nanmin(x_vals))
+    x_max = float(np.nanmax(x_vals))
+
+    if not np.isfinite(x_min) or not np.isfinite(x_max):
+        x_min, x_max = 0.0, 100.0
+
+    if x_max <= x_min:
+        x_max = x_min + 1.0
+
+    slider_min = float(np.floor(x_min))
+    slider_max = float(np.ceil(x_max))
+
+    return slider_min, slider_max, [slider_min, slider_max]
 
 
 
@@ -797,13 +935,13 @@ def _update_top_section(flt, include_coaches):
 
     return fig_cum, fig_tod, fig_wday, table
 
-
 @app.callback(
     Output('workout-stroke-graph', 'figure'),
     Input('workout-dropdown', 'value'),
     Input('interval-dropdown', 'value'),
+    Input('distance-range', 'value'),
 )
-def update_workout_graph(selected_workout, which_interval):
+def update_workout_graph(selected_workout, which_interval, distance_range):
     if not selected_workout:
         return go.Figure(layout_title_text="No Data Available")
 
@@ -817,15 +955,24 @@ def update_workout_graph(selected_workout, which_interval):
         which_interval = 0
 
     seg = segments[which_interval]
-    meta = intervals_meta[which_interval] if (
-        isinstance(intervals_meta, list) and which_interval < len(intervals_meta)
+    meta = (
+        intervals_meta[which_interval]
+        if isinstance(intervals_meta, list)
+        and which_interval < len(intervals_meta)
         and isinstance(intervals_meta[which_interval], dict)
-    ) else {}
+        else {}
+    )
 
     title = f"Interval {which_interval + 1}"
 
-    return build_stroke_figure(seg, title, meta)
+    fig = build_stroke_figure(seg, title, meta)
 
+    # Apply the slider window as an x-axis range
+    if distance_range and len(distance_range) == 2:
+        low, high = distance_range
+        fig.update_xaxes(range=[low, high])
+
+    return fig
 
 
 if __name__ == '__main__':
