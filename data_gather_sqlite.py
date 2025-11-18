@@ -14,9 +14,6 @@ import random
 from threading import Semaphore
 from collections import deque
 
-# =========================
-# Overall configuration
-# =========================
 BATCH_SIZE = 10
 
 # API paging
@@ -37,17 +34,12 @@ DEFAULT_TO   = "2026-03-01"
 ROWER_PARALLELISM = 2     # max simultaneous requests per single rower
 GLOBAL_WORKERS     = 16   # total threads
 
-# =========================
-# Logging
-# =========================
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(message)s"
 )
 log = logging.getLogger("concept2")
 
-# =========================
-# Auth
 # =========================
 access_token = config.access_token
 
