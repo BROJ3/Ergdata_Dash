@@ -25,7 +25,6 @@ def fetch_and_build_for_rower(rower: dict, date_from: str, date_to: str) -> List
         rid = rower["partner_id"]
         items = fetch_all_results_paginated(http, rid, date_from, date_to)
         if not items:
-            log.warning("No workouts found for %s", rower["name"])
             return rows
 
         for w in items:
