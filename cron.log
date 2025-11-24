@@ -24,3 +24,9 @@
 2025-11-21 12:00:33,148 INFO No new workouts to fetch. Done.
 2025-11-21 12:00:33,148 INFO SQLite connection closed.
 2025-11-21 12:00:33,149 INFO HTTP session closed.
+2025-11-24 12:00:07,954 INFO Login successful.
+2025-11-24 12:00:11,107 INFO Active rowers this season: 29
+2025-11-24 12:00:42,013 INFO Planned 0 new workouts (interleaved across 29 rowers).
+2025-11-24 12:00:42,013 INFO No new workouts to fetch. Done.
+2025-11-24 12:00:42,014 INFO SQLite connection closed.
+2025-11-24 12:00:42,014 INFO HTTP session closed.
