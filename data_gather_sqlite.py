@@ -185,6 +185,7 @@ def fetch_data(api_endpoint: str, sess: requests.Session | None = None):
         log.exception("HTTP error on %s", api_endpoint)
     return None
 
+
 def fetch_all_results_paginated(session: requests.Session, rower_id: str, date_from: str, date_to: str) -> list[dict]:
     base = (f"https://log.concept2.com/api/users/{rower_id}/results"
             f"?from={date_from}&to={date_to}&number={PER_PAGE}")
@@ -413,7 +414,7 @@ def main():
 
         # 3) EXECUTE (fetch strokes interleaved across rowers)
         tuples = process_global_worklist(global_worklist, rowers)
-        log.info("Fetched %d workouts (with/without strokes).", len(tuples))
+        log.info("Fetched %d workouts.", len(tuples))
 
         # 4) INSERT (chunked)
         inserted = insert_workouts_chunked(connection, cursor, tuples, chunk=500)
