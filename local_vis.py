@@ -281,11 +281,7 @@ app.layout = html.Div(
 )
 
 def _strokes_from_sd(sd: dict):
-    """
-    Return a list of stroke dicts from stroke_data payloads shaped as:
-      {"data": [ ... ]}              # old
-      {"data": {"data": [ ... ]}}    # new
-    """
+
     if not isinstance(sd, dict):
         return []
     slot = sd.get("data", [])
@@ -295,12 +291,7 @@ def _strokes_from_sd(sd: dict):
 
 
 def _intervals_meta_from_sd(sd: dict):
-    """
-    Return intervals metadata if present, regardless of wrapper.
-    Accepts:
-      sd["intervals_meta"]
-      sd["data"]["meta"] or sd["data"]["intervals_meta"]
-    """
+
     if not isinstance(sd, dict):
         return []
     meta = sd.get("intervals_meta")
@@ -313,9 +304,7 @@ def _intervals_meta_from_sd(sd: dict):
 
 
 def split_strokes_by_time_reset(strokes):
-    """
-    Split stroke list into segments whenever the Concept2 time counter resets.
-    """
+
     if not strokes:
         return []
 
@@ -388,13 +377,8 @@ def segments_for_sd(sd: dict):
 
 
 def build_interval_dropdown_options(segments, intervals_meta):
-    """
-    Build the interval dropdown options.
-    - Converts time from deciseconds → seconds
-    - Formats time nicely: 18000 → '30:00'
-    """
+
     def fmt_time_ds(ds):
-        """Format deciseconds (Concept2) as M:SS or H:MM:SS."""
         if ds is None:
             return None
         sec = float(ds) / 10.0
@@ -412,7 +396,7 @@ def build_interval_dropdown_options(segments, intervals_meta):
         label = f"Interval {i + 1}"
 
         if isinstance(intervals_meta, list) and i < len(intervals_meta):
-            meta = intervals_meta[i]   # ← FIXED
+            meta = intervals_meta[i]  
 
             if isinstance(meta, dict):
                 t = meta.get("time")       # deciseconds
@@ -420,7 +404,6 @@ def build_interval_dropdown_options(segments, intervals_meta):
 
                 parts = []
 
-                # Format time
                 if t is not None:
                     t_formatted = fmt_time_ds(t)
                     if t_formatted:
@@ -440,9 +423,6 @@ def build_interval_dropdown_options(segments, intervals_meta):
 
 
 def format_pace(sec):
-    """
-    Convert seconds per 500m to 'M:SS.s' string (used for axis + hover).
-    """
     if sec <= 0 or not np.isfinite(sec):
         return "-"
     m = int(sec // 60)
@@ -451,9 +431,6 @@ def format_pace(sec):
 
 
 def format_time_hms(sec):
-    """
-    Format total time in seconds as H:MM:SS.s (or M:SS.s if < 1h)
-    """
     if sec is None or sec <= 0 or not np.isfinite(sec):
         return "-"
     sec = float(sec)
