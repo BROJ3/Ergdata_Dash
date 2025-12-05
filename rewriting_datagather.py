@@ -182,3 +182,52 @@ def get_all_workout_summaries(session, rower_id, date_from, date_to):
 
     return all_results
 
+
+def get_existing_workout_ids(cursor,rower_id):
+    cursor.execute( "SELECT workout_id FROM crnjakt_workouts WHERE rower_id = ?",
+                   (rower_id))
+    rows = cursor.fetchall()
+    return {row[0] for row in rows}
+
+
+def get_latest_workout_date(cursor, rower_id):
+    cursor.execute("SELECT MAX(date) FROM crnjakt_workouts WHERE rower_id = ?",
+        (rower_id,))
+    result = cursor.fetchone()
+    return result[0] 
+
+def build_date_range(latest_date):
+    if latest_date:
+        start=(datetime.fromisoformat(latest_date)).strftime("%Y-%m-%d")
+        end = DEFAULT_TO
+    else:
+        start=DEFAULT_FROM
+        end=DEFAULT_TO
+    return start, end
+
+def list_new_workouts_for_rower(session,cursor,rower_id,rower_name):
+    latest_date = get_latest_workout_date(cursor,rower_id)
+    start,end = build_date_range(latest_date)
+
+    all_workouts = get_all_workout_summaries(session,rower_id,start,end)
+    existing_ids = get_existing_workout_ids(cursor,rower_id)
+
+    new_workouts = []
+
+    for workout in all_workouts:
+        workout_id = str(workout.get("id"))
+        if workout_id not in existing_ids:
+            workout["_rower_id"]=rower_id
+            workout["_rower_name"] = rower_name
+            new_workouts.append(workout)
+
+    return new_workouts
+
+
+def round_robiN_interleave(session,cursor,rowers):
+    rower_to_new={}
+    
+    for rower_id, info in rowers.items():
+        name=info['name']
+        
+        new_for_rower=list_new_workouts_for_rower(session,cursor,rower_id)
