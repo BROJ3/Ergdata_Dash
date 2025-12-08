@@ -224,7 +224,7 @@ def list_new_workouts_for_rower(session,cursor,rower_id,rower_name):
     return new_workouts
 
 
-def round_robiN_interleave(session,cursor,rowers):
+def round_robin_interleave(session,cursor,rowers):
     rower_to_new={}
     
     for rower_id, info in rowers.items():
