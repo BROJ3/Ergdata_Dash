@@ -176,3 +176,26 @@
 2026-01-23 12:00:39,798 INFO No new workouts to fetch. Done.
 2026-01-23 12:00:39,798 INFO SQLite connection closed.
 2026-01-23 12:00:39,799 INFO HTTP session closed.
+2026-01-26 12:00:07,197 INFO Login successful.
+2026-01-26 12:00:09,808 INFO Active rowers this season: 29
+2026-01-26 12:01:15,515 INFO Planned 12 new workouts (interleaved across 29 rowers).
+2026-01-26 12:01:23,647 INFO Fetched 12 workouts.
+2026-01-26 12:01:23,658 INFO ✅ Inserted 12 workouts.
+2026-01-26 12:01:23,658 INFO Script ran successfully! Elapsed time: 81.58s
+2026-01-26 12:01:23,658 INFO SQLite connection closed.
+2026-01-26 12:01:23,659 INFO HTTP session closed.
+2026-01-27 12:00:08,064 INFO Login successful.
+2026-01-27 12:00:15,290 INFO Active rowers this season: 29
+2026-01-27 12:01:36,775 INFO Planned 3 new workouts (interleaved across 29 rowers).
+2026-01-27 12:01:38,272 ERROR HTTP 500 on https://log.concept2.com/api/users/2738782/results/111886401/strokes: <!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+      <title>Conce
+2026-01-27 12:01:38,274 INFO Fetched 3 workouts.
+2026-01-27 12:01:38,301 INFO ✅ Inserted 3 workouts.
+2026-01-27 12:01:38,301 INFO Script ran successfully! Elapsed time: 96.50s
+2026-01-27 12:01:38,302 INFO SQLite connection closed.
+2026-01-27 12:01:38,303 INFO HTTP session closed.
