@@ -235,3 +235,9 @@
 2026-02-03 12:06:23,046 INFO Script ran successfully! Elapsed time: 380.70s
 2026-02-03 12:06:23,046 INFO SQLite connection closed.
 2026-02-03 12:06:23,047 INFO HTTP session closed.
+2026-02-04 12:00:14,332 INFO Login successful.
+2026-02-04 12:00:18,997 INFO Active rowers this season: 29
+2026-02-04 12:02:36,720 INFO Planned 0 new workouts (interleaved across 29 rowers).
+2026-02-04 12:02:36,721 INFO No new workouts to fetch. Done.
+2026-02-04 12:02:36,722 INFO SQLite connection closed.
+2026-02-04 12:02:36,723 INFO HTTP session closed.
