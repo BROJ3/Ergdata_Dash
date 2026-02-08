@@ -255,3 +255,9 @@
 2026-02-06 12:01:15,726 INFO No new workouts to fetch. Done.
 2026-02-06 12:01:15,726 INFO SQLite connection closed.
 2026-02-06 12:01:15,726 INFO HTTP session closed.
+2026-02-08 12:00:08,348 INFO Login successful.
+2026-02-08 12:00:12,056 INFO Active rowers this season: 29
+2026-02-08 12:01:41,851 INFO Planned 0 new workouts (interleaved across 29 rowers).
+2026-02-08 12:01:41,852 INFO No new workouts to fetch. Done.
+2026-02-08 12:01:41,852 INFO SQLite connection closed.
+2026-02-08 12:01:41,853 INFO HTTP session closed.
