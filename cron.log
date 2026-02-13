@@ -267,3 +267,29 @@
 2026-02-09 12:15:09,896 INFO No new workouts to fetch. Done.
 2026-02-09 12:15:09,897 INFO SQLite connection closed.
 2026-02-09 12:15:09,898 INFO HTTP session closed.
+2026-02-10 12:00:04,107 INFO Login successful.
+2026-02-10 12:00:04,844 INFO Active rowers this season: 29
+2026-02-10 12:00:25,680 INFO Planned 0 new workouts (interleaved across 29 rowers).
+2026-02-10 12:00:25,680 INFO No new workouts to fetch. Done.
+2026-02-10 12:00:25,681 INFO SQLite connection closed.
+2026-02-10 12:00:25,681 INFO HTTP session closed.
+2026-02-11 12:00:05,001 INFO Login successful.
+2026-02-11 12:00:06,668 INFO Active rowers this season: 29
+2026-02-11 12:00:30,445 INFO Planned 4 new workouts (interleaved across 29 rowers).
+2026-02-11 12:00:33,974 INFO Fetched 4 workouts.
+2026-02-11 12:00:33,985 INFO ✅ Inserted 4 workouts.
+2026-02-11 12:00:33,985 INFO Script ran successfully! Elapsed time: 31.93s
+2026-02-11 12:00:33,985 INFO SQLite connection closed.
+2026-02-11 12:00:33,985 INFO HTTP session closed.
+2026-02-12 12:22:52,990 WARNING Retrying (Retry(total=4, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NameResolutionError("<urllib3.connection.HTTPSConnection object at 0x782e9ebcb8e0>: Failed to resolve 'log.concept2.com' ([Errno -3] Temporary failure in name resolution)")': /login
+2026-02-12 12:22:54,003 WARNING Retrying (Retry(total=3, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NameResolutionError("<urllib3.connection.HTTPSConnection object at 0x782e9ebcbb50>: Failed to resolve 'log.concept2.com' ([Errno -3] Temporary failure in name resolution)")': /login
+2026-02-12 12:22:56,027 WARNING Retrying (Retry(total=2, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NameResolutionError("<urllib3.connection.HTTPSConnection object at 0x782e9ebcbd30>: Failed to resolve 'log.concept2.com' ([Errno -3] Temporary failure in name resolution)")': /login
+2026-02-12 12:23:00,052 WARNING Retrying (Retry(total=1, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NameResolutionError("<urllib3.connection.HTTPSConnection object at 0x782e9ebcbf10>: Failed to resolve 'log.concept2.com' ([Errno -3] Temporary failure in name resolution)")': /login
+2026-02-12 12:23:01,773 INFO Login successful.
+2026-02-12 12:23:02,420 INFO Active rowers this season: 29
+2026-02-12 12:23:19,832 INFO Planned 2 new workouts (interleaved across 29 rowers).
+2026-02-12 12:23:21,267 INFO Fetched 2 workouts.
+2026-02-12 12:23:21,352 INFO ✅ Inserted 2 workouts.
+2026-02-12 12:23:21,353 INFO Script ran successfully! Elapsed time: 28.38s
+2026-02-12 12:23:21,353 INFO SQLite connection closed.
+2026-02-12 12:23:21,354 INFO HTTP session closed.
