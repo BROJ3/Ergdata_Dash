@@ -325,3 +325,12 @@
 2026-02-18 12:00:21,415 INFO No new workouts to fetch. Done.
 2026-02-18 12:00:21,415 INFO SQLite connection closed.
 2026-02-18 12:00:21,416 INFO HTTP session closed.
+2026-02-19 12:00:03,295 INFO Login successful.
+2026-02-19 12:00:04,022 INFO Active rowers this season: 29
+2026-02-19 12:50:22,831 WARNING Retrying (Retry(total=4, connect=None, read=None, redirect=None, status=None)) after connection broken by 'ReadTimeoutError("HTTPSConnectionPool(host='log.concept2.com', port=443): Read timed out. (read timeout=30)")': /api/users/2449239/results?from=2026-02-19&to=2026-03-01&number=250&page=1
+2026-02-19 12:50:36,708 INFO Planned 6 new workouts (interleaved across 29 rowers).
+2026-02-19 12:50:39,715 INFO Fetched 6 workouts.
+2026-02-19 12:50:39,726 INFO ✅ Inserted 6 workouts.
+2026-02-19 12:50:39,726 INFO Script ran successfully! Elapsed time: 3038.26s
+2026-02-19 12:50:39,727 INFO SQLite connection closed.
+2026-02-19 12:50:39,727 INFO HTTP session closed.
