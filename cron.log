@@ -340,3 +340,37 @@
 2026-02-21 12:00:45,239 INFO No new workouts to fetch. Done.
 2026-02-21 12:00:45,240 INFO SQLite connection closed.
 2026-02-21 12:00:45,240 INFO HTTP session closed.
+2026-02-23 12:00:04,963 INFO Login successful.
+2026-02-23 12:00:05,939 INFO Active rowers this season: 29
+2026-02-23 12:00:27,763 INFO Planned 0 new workouts (interleaved across 29 rowers).
+2026-02-23 12:00:27,764 INFO No new workouts to fetch. Done.
+2026-02-23 12:00:27,764 INFO SQLite connection closed.
+2026-02-23 12:00:27,764 INFO HTTP session closed.
+2026-02-24 12:00:04,883 INFO Login successful.
+2026-02-24 12:00:06,151 INFO Active rowers this season: 29
+2026-02-24 12:00:25,071 INFO Planned 0 new workouts (interleaved across 29 rowers).
+2026-02-24 12:00:25,071 INFO No new workouts to fetch. Done.
+2026-02-24 12:00:25,072 INFO SQLite connection closed.
+2026-02-24 12:00:25,073 INFO HTTP session closed.
+2026-02-25 12:00:04,463 INFO Login successful.
+2026-02-25 12:00:06,063 INFO Active rowers this season: 29
+2026-02-25 12:00:28,167 INFO Planned 0 new workouts (interleaved across 29 rowers).
+2026-02-25 12:00:28,167 INFO No new workouts to fetch. Done.
+2026-02-25 12:00:28,168 INFO SQLite connection closed.
+2026-02-25 12:00:28,169 INFO HTTP session closed.
+2026-02-26 12:00:04,390 INFO Login successful.
+2026-02-26 12:00:05,592 INFO Active rowers this season: 29
+2026-02-26 12:00:27,573 INFO Planned 15 new workouts (interleaved across 29 rowers).
+2026-02-26 12:00:32,606 INFO Fetched 15 workouts.
+2026-02-26 12:00:32,639 INFO ✅ Inserted 15 workouts.
+2026-02-26 12:00:32,639 INFO Script ran successfully! Elapsed time: 30.66s
+2026-02-26 12:00:32,640 INFO SQLite connection closed.
+2026-02-26 12:00:32,641 INFO HTTP session closed.
+2026-02-27 12:00:03,305 INFO Login successful.
+2026-02-27 12:00:04,052 INFO Active rowers this season: 29
+2026-02-27 12:00:19,685 INFO Planned 5 new workouts (interleaved across 29 rowers).
+2026-02-27 12:00:21,166 INFO Fetched 5 workouts.
+2026-02-27 12:00:21,178 INFO ✅ Inserted 5 workouts.
+2026-02-27 12:00:21,179 INFO Script ran successfully! Elapsed time: 19.81s
+2026-02-27 12:00:21,179 INFO SQLite connection closed.
+2026-02-27 12:00:21,180 INFO HTTP session closed.
