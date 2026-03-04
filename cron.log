@@ -390,3 +390,14 @@
 2026-03-02 12:00:21,415 INFO Script ran successfully! Elapsed time: 19.79s
 2026-03-02 12:00:21,416 INFO SQLite connection closed.
 2026-03-02 12:00:21,417 INFO HTTP session closed.
+2026-03-03 12:10:02,747 WARNING Retrying (Retry(total=4, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NameResolutionError("<urllib3.connection.HTTPSConnection object at 0x7f7578fc77f0>: Failed to resolve 'log.concept2.com' ([Errno -3] Temporary failure in name resolution)")': /login
+2026-03-03 12:10:03,757 WARNING Retrying (Retry(total=3, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NameResolutionError("<urllib3.connection.HTTPSConnection object at 0x7f7578fc7a60>: Failed to resolve 'log.concept2.com' ([Errno -3] Temporary failure in name resolution)")': /login
+2026-03-03 12:10:05,771 WARNING Retrying (Retry(total=2, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NameResolutionError("<urllib3.connection.HTTPSConnection object at 0x7f7578fc7c40>: Failed to resolve 'log.concept2.com' ([Errno -3] Temporary failure in name resolution)")': /login
+2026-03-03 12:10:07,387 INFO Login successful.
+2026-03-03 12:10:08,037 INFO Active rowers this season: 29
+2026-03-03 12:10:24,296 INFO Planned 5 new workouts (interleaved across 29 rowers).
+2026-03-03 12:10:26,960 INFO Fetched 5 workouts.
+2026-03-03 12:10:26,998 INFO ✅ Inserted 5 workouts.
+2026-03-03 12:10:26,998 INFO Script ran successfully! Elapsed time: 24.26s
+2026-03-03 12:10:26,999 INFO SQLite connection closed.
+2026-03-03 12:10:26,999 INFO HTTP session closed.
