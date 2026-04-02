@@ -28,7 +28,7 @@ JITTER_MIN, JITTER_MAX = 0.05, 0.20
 
 # season 25
 DEFAULT_FROM = "2025-10-21"
-DEFAULT_TO   = "2026-04-01"
+DEFAULT_TO   = "2026-05-01"
 
 # Interleaved work processing
 ROWER_PARALLELISM = 2     # max simultaneous requests per single rower
