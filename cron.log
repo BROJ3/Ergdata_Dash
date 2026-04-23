@@ -548,3 +548,17 @@
 2026-04-06 12:00:24,965 INFO SQLite connection closed.
 2026-04-06 12:00:24,965 INFO HTTP session closed.
 2026-04-07 12:31:37,606 INFO Login successful.
+2026-04-13 12:00:05,891 INFO Login successful.
+2026-04-13 12:00:06,778 INFO Active rowers this season: 29
+2026-04-13 12:00:25,260 INFO Planned 0 new workouts (interleaved across 29 rowers).
+2026-04-13 12:00:25,261 INFO No new workouts to fetch. Done.
+2026-04-13 12:00:25,262 INFO SQLite connection closed.
+2026-04-13 12:00:25,263 INFO HTTP session closed.
+2026-04-15 12:02:56,783 INFO Login successful.
+2026-04-15 12:02:57,451 INFO Active rowers this season: 29
+2026-04-15 12:03:14,073 INFO Planned 11 new workouts (interleaved across 29 rowers).
+2026-04-15 12:03:18,999 INFO Fetched 11 workouts.
+2026-04-15 12:03:19,025 INFO ✅ Inserted 11 workouts.
+2026-04-15 12:03:19,026 INFO Script ran successfully! Elapsed time: 24.17s
+2026-04-15 12:03:19,027 INFO SQLite connection closed.
+2026-04-15 12:03:19,028 INFO HTTP session closed.
