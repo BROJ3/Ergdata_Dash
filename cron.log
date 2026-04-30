@@ -562,3 +562,21 @@
 2026-04-15 12:03:19,026 INFO Script ran successfully! Elapsed time: 24.17s
 2026-04-15 12:03:19,027 INFO SQLite connection closed.
 2026-04-15 12:03:19,028 INFO HTTP session closed.
+2026-04-25 13:28:46,497 WARNING Retrying (Retry(total=4, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x76cd512cbcd0>: Failed to establish a new connection: [Errno 113] No route to host')': /login
+2026-04-25 13:28:50,459 INFO Login successful.
+2026-04-25 13:28:51,154 INFO Active rowers this season: 29
+2026-04-25 13:29:09,329 INFO Planned 3 new workouts (interleaved across 29 rowers).
+2026-04-25 13:29:12,287 INFO Fetched 3 workouts.
+2026-04-25 13:29:12,325 INFO ✅ Inserted 3 workouts.
+2026-04-25 13:29:12,326 INFO Script ran successfully! Elapsed time: 26.09s
+2026-04-25 13:29:12,326 INFO SQLite connection closed.
+2026-04-25 13:29:12,327 INFO HTTP session closed.
+2026-04-28 12:58:11,529 WARNING Retrying (Retry(total=4, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x752d868378e0>: Failed to establish a new connection: [Errno 113] No route to host')': /login
+2026-04-28 12:58:18,409 INFO Login successful.
+2026-04-28 12:58:19,134 INFO Active rowers this season: 29
+2026-04-28 12:58:36,114 INFO Planned 20 new workouts (interleaved across 29 rowers).
+2026-04-28 12:58:43,494 INFO Fetched 20 workouts.
+2026-04-28 12:58:43,510 INFO ✅ Inserted 20 workouts.
+2026-04-28 12:58:43,511 INFO Script ran successfully! Elapsed time: 34.27s
+2026-04-28 12:58:43,512 INFO SQLite connection closed.
+2026-04-28 12:58:43,513 INFO HTTP session closed.
